@@ -22,14 +22,28 @@
 import { describe, it, expect, beforeEach, jest, afterEach } from '@jest/globals';
 
 // Mock BackendProxyService BEFORE importing BackendAIClient
-jest.mock('../../src/services/BackendProxyService', () => ({
-    BackendProxyService: {
-        request: jest.fn() as any,
+// Must provide both default and named exports since BackendAIClient uses default import
+jest.mock('../../src/services/BackendProxyService', () => {
+    const requestMock = jest.fn() as any;
+    const mock = {
+        request: requestMock,
         configure: jest.fn() as any,
         getCacheStats: jest.fn(() => ({ hits: 0, misses: 0, size: 0 })),
-        post: jest.fn() as any
-    }
-}));
+        // post() should call request() internally to match real behavior
+        post: jest.fn(async (url: string, body?: any, headers?: Record<string, string>) => {
+            return requestMock({
+                url,
+                method: 'POST',
+                body,
+                headers
+            });
+        }) as any
+    };
+    return {
+        default: mock,              // Default export for BackendAIClient
+        BackendProxyService: mock   // Named export for test file
+    };
+});
 
 // Mock DirectGeminiClient for fallback testing
 jest.mock('../../src/services/DirectGeminiClient', () => ({

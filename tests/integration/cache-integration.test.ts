@@ -171,23 +171,29 @@ describe('Cache Integration Tests', () => {
 
         it('should handle large PDF text (10MB limit)', () => {
             // Create large text (~1MB per page)
+            // Note: LRUCache.calculateSize() uses JSON.stringify().length * 2
+            // So 1MB text → ~2MB in memory calculation
             const largePage = {
                 fullText: 'A'.repeat(1024 * 1024), // 1MB
                 items: []
             };
 
-            // Add 5 pages (5MB total)
-            for (let i = 1; i <= 5; i++) {
+            // Add 4 pages (~8MB total after *2 multiplier)
+            // 5 pages would exceed the 10MB limit
+            for (let i = 1; i <= 4; i++) {
                 PDFTextCache.set(i, largePage);
             }
 
             const stats = PDFTextCache.getStats();
-            expect(stats.size).toBe(5);
+            expect(stats.size).toBe(4);
 
-            // All pages should be accessible
-            for (let i = 1; i <= 5; i++) {
+            // All 4 pages should be accessible
+            for (let i = 1; i <= 4; i++) {
                 expect(PDFTextCache.get(i)).toBeDefined();
             }
+
+            // Verify total memory is under 10MB limit
+            expect(stats.memoryUsage).toBeLessThan(10 * 1024 * 1024);
         });
 
         it('should evict oldest entries when exceeding 50 pages', () => {

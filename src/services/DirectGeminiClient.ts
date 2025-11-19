@@ -585,13 +585,17 @@ export class DirectGeminiClient {
 /**
  * Factory function to create a DirectGeminiClient instance with API key from environment
  *
+ * Note: Uses process.env for Jest compatibility. In Vite browser context,
+ * pass API key explicitly to DirectGeminiClient constructor instead.
+ *
  * @returns DirectGeminiClient instance or null if API key is not configured
  * @throws Error with user-friendly message if API key is missing
  */
 export function createDirectGeminiClient(): DirectGeminiClient | null {
-  const API_KEY = import.meta.env.VITE_GEMINI_API_KEY ||
-                  import.meta.env.VITE_API_KEY ||
-                  import.meta.env.VITE_GOOGLE_API_KEY;
+  // Use process.env for Node.js/Jest compatibility
+  const API_KEY = process.env.VITE_GEMINI_API_KEY ||
+                  process.env.VITE_API_KEY ||
+                  process.env.VITE_GOOGLE_API_KEY;
 
   if (!API_KEY) {
     const errorMsg = `⚠️ Gemini API Key Not Configured

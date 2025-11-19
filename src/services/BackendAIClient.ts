@@ -173,10 +173,13 @@ export const BackendAIClient = {
      */
     async generatePICO(request: PICORequest): Promise<PICOResponse> {
         try {
-            const response = await BackendProxyService.post<PICOResponse>(
-                '/api/ai/generate-pico',
-                request
-            );
+            const response = await BackendProxyService.request<PICOResponse>({
+                url: '/api/ai/generate-pico',
+                method: 'POST',
+                body: request,
+                cache: true,        // PICO extraction is deterministic, can be cached
+                timeout: 60000      // 60s timeout for AI processing
+            });
             return response.data;
         } catch (error) {
             console.error('BackendAIClient.generatePICO failed:', error);
@@ -194,10 +197,13 @@ export const BackendAIClient = {
      */
     async generateSummary(request: SummaryRequest): Promise<SummaryResponse> {
         try {
-            const response = await BackendProxyService.post<SummaryResponse>(
-                '/api/ai/generate-summary',
-                request
-            );
+            const response = await BackendProxyService.request<SummaryResponse>({
+                url: '/api/ai/generate-summary',
+                method: 'POST',
+                body: request,
+                cache: true,        // Summary generation is deterministic, can be cached
+                timeout: 60000      // 60s timeout for AI processing
+            });
             return response.data;
         } catch (error) {
             console.error('BackendAIClient.generateSummary failed:', error);
@@ -215,10 +221,13 @@ export const BackendAIClient = {
      */
     async validateField(request: ValidationRequest): Promise<ValidationResponse> {
         try {
-            const response = await BackendProxyService.post<ValidationResponse>(
-                '/api/ai/validate-field',
-                request
-            );
+            const response = await BackendProxyService.request<ValidationResponse>({
+                url: '/api/ai/validate-field',
+                method: 'POST',
+                body: request,
+                cache: false,       // Validation is dynamic (field value changes), don't cache
+                timeout: 30000      // 30s timeout (faster than generation)
+            });
             return response.data;
         } catch (error) {
             console.error('BackendAIClient.validateField failed:', error);
@@ -236,10 +245,13 @@ export const BackendAIClient = {
      */
     async findMetadata(request: MetadataRequest): Promise<MetadataResponse> {
         try {
-            const response = await BackendProxyService.post<MetadataResponse>(
-                '/api/ai/find-metadata',
-                request
-            );
+            const response = await BackendProxyService.request<MetadataResponse>({
+                url: '/api/ai/find-metadata',
+                method: 'POST',
+                body: request,
+                cache: true,        // Metadata extraction is deterministic, can be cached
+                timeout: 30000      // 30s timeout (faster than full PICO)
+            });
             return response.data;
         } catch (error) {
             console.error('BackendAIClient.findMetadata failed:', error);
@@ -257,10 +269,13 @@ export const BackendAIClient = {
      */
     async extractTables(request: TableExtractionRequest): Promise<TableExtractionResponse> {
         try {
-            const response = await BackendProxyService.post<TableExtractionResponse>(
-                '/api/ai/extract-tables',
-                request
-            );
+            const response = await BackendProxyService.request<TableExtractionResponse>({
+                url: '/api/ai/extract-tables',
+                method: 'POST',
+                body: request,
+                cache: true,        // Table extraction is deterministic, can be cached
+                timeout: 60000      // 60s timeout for complex table processing
+            });
             return response.data;
         } catch (error) {
             console.error('BackendAIClient.extractTables failed:', error);
@@ -278,10 +293,13 @@ export const BackendAIClient = {
      */
     async analyzeImage(request: ImageAnalysisRequest): Promise<ImageAnalysisResponse> {
         try {
-            const response = await BackendProxyService.post<ImageAnalysisResponse>(
-                '/api/ai/analyze-image',
-                request
-            );
+            const response = await BackendProxyService.request<ImageAnalysisResponse>({
+                url: '/api/ai/analyze-image',
+                method: 'POST',
+                body: request,
+                cache: false,       // Image analysis with custom prompts, don't cache
+                timeout: 60000      // 60s timeout for image processing
+            });
             return response.data;
         } catch (error) {
             console.error('BackendAIClient.analyzeImage failed:', error);
@@ -299,10 +317,13 @@ export const BackendAIClient = {
      */
     async deepAnalysis(request: DeepAnalysisRequest): Promise<DeepAnalysisResponse> {
         try {
-            const response = await BackendProxyService.post<DeepAnalysisResponse>(
-                '/api/ai/deep-analysis',
-                request
-            );
+            const response = await BackendProxyService.request<DeepAnalysisResponse>({
+                url: '/api/ai/deep-analysis',
+                method: 'POST',
+                body: request,
+                cache: false,       // Deep analysis with custom prompts, don't cache
+                timeout: 120000     // 120s timeout for extended reasoning
+            });
             return response.data;
         } catch (error) {
             console.error('BackendAIClient.deepAnalysis failed:', error);
