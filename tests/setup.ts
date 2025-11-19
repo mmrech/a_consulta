@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom';
+import { createCanvas } from 'canvas';
 
 // Initialize jsdom globals if not already set
 if (typeof global.window === 'undefined') {
@@ -7,6 +8,16 @@ if (typeof global.window === 'undefined') {
 if (typeof global.document === 'undefined') {
   global.document = {} as Document;
 }
+
+// Configure canvas support for jsdom
+// @ts-ignore - Canvas mock for testing
+HTMLCanvasElement.prototype.getContext = function (contextId: string) {
+  if (contextId === '2d') {
+    const canvas = createCanvas(this.width || 300, this.height || 150);
+    return canvas.getContext('2d');
+  }
+  return null;
+};
 
 global.window.pdfjsLib = {
   GlobalWorkerOptions: { workerSrc: '' },
@@ -24,3 +35,12 @@ const localStorageMock = {
 };
 
 global.localStorage = localStorageMock as any;
+
+// Mock fetch for network requests
+global.fetch = jest.fn().mockResolvedValue({
+  ok: true,
+  status: 200,
+  json: async () => ({}),
+  text: async () => '',
+  headers: new Headers(),
+}) as jest.Mock;
