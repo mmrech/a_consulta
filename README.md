@@ -125,6 +125,46 @@ npm run dev
 
 **⚠️ Security Note:** Option 2 exposes API keys in the frontend bundle. Only use for development. Production deployments should use Option 1 (backend-first).
 
+**Option 3: Docker Compose (Production-Ready) 🐳**
+
+Deploy the entire stack with Docker for production or containerized development.
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/matheus-rech/clinical-extractor.git
+cd clinical-extractor
+
+# 2. Configure environment variables
+cp .env.example .env
+# Edit .env and add your Gemini API key:
+# GEMINI_API_KEY=your_api_key_here
+
+# 3. Build and start all services
+docker-compose up -d
+
+# Services will be available at:
+# - Frontend: http://localhost:3000
+# - Backend: http://localhost:8000
+
+# 4. View logs
+docker-compose logs -f
+
+# 5. Stop services
+docker-compose down
+
+# 6. Rebuild after code changes
+docker-compose up -d --build
+```
+
+**Features:**
+
+- ✅ Isolated containers for frontend and backend
+- ✅ Automatic health checks and restart policies
+- ✅ Nginx-based frontend serving with gzip compression
+- ✅ Multi-worker FastAPI backend (4 workers)
+- ✅ Production-optimized builds
+- ✅ Easy scaling with `docker-compose scale`
+
 ### First Extraction
 
 1. **Upload PDF** - Click "Choose PDF File" or "Load Sample PDF"
