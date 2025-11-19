@@ -11,6 +11,8 @@ import type { ExtractedFigure } from './FigureExtractor';
 import type { AgentResult } from './AgentOrchestrator';
 import BackendClient from './BackendClient';
 import AuthManager from './AuthManager';
+import StatusManager from '../utils/status';
+import { logErrorWithContext, categorizeAIError, formatErrorMessage } from '../utils/aiErrorHandler';
 
 /**
  * Type definitions for the CDN-loaded Google Generative AI SDK
@@ -271,6 +273,12 @@ class MedicalAgentBridge {
 
         } catch (error: any) {
             console.error(`Agent ${agentName} error:`, error.message);
+
+            // Comprehensive error handling with user feedback
+            logErrorWithContext(error, `Agent ${agentName}`);
+            const categorized = categorizeAIError(error, `Agent ${agentName}`);
+            StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+
             return {
                 agentName,
                 confidence: 0,
@@ -342,15 +350,25 @@ Respond with JSON:
      * Routes through secure backend API instead of direct Gemini calls
      */
     private async callBackendAgent(prompt: string, agentName: string, documentId?: string): Promise<string> {
-        const authenticated = await AuthManager.ensureAuthenticated();
-        if (!authenticated) {
-            throw new Error('Backend authentication failed');
-        }
+        try {
+            const authenticated = await AuthManager.ensureAuthenticated();
+            if (!authenticated) {
+                throw new Error('Backend authentication failed');
+            }
 
-        const docId = documentId || `temp-agent-${Date.now()}`;
-        const response = await BackendClient.deepAnalysis(docId, '', prompt);
-        
-        return response.analysis;
+            const docId = documentId || `temp-agent-${Date.now()}`;
+            const response = await BackendClient.deepAnalysis(docId, '', prompt);
+
+            return response.analysis;
+        } catch (error: any) {
+            // Log backend-specific errors with context
+            logErrorWithContext(error, `Backend Agent ${agentName}`);
+
+            const categorized = categorizeAIError(error, `Backend Agent ${agentName}`);
+            StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+
+            throw new Error(`Backend agent ${agentName} failed: ${error.message}`);
+        }
     }
 
     /**
@@ -396,6 +414,13 @@ Respond with JSON:
         } catch (error) {
             // Fallback: return raw response
             console.warn(`Failed to parse ${agentName} response as JSON, using raw text`);
+
+            // Notify user of degraded confidence
+            StatusManager.show(
+                `⚠️ ${agentName} returned unexpected format (confidence reduced to 70%)`,
+                'warning',
+                10000
+            );
 
             return {
                 confidence: 0.70,

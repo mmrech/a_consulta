@@ -92,15 +92,96 @@ Include in your report:
 
 ## Known Security Considerations
 
-### 1. Client-Side API Keys
+### 1. Frontend API Key Exposure ⚠️ CRITICAL
 
-⚠️ **Note:** Gemini API keys are exposed in client-side code (environment variable `VITE_GEMINI_API_KEY`). This is a Vite limitation.
+**Risk Level:** HIGH (10/10) - **Deploy Blocker for Production**
 
-**Mitigations:**
-- Use API key restrictions in Google Cloud Console
-- Limit API key to specific HTTP referrers (your domain)
-- Monitor API usage for abuse
-- Consider backend proxy for production (see `BackendProxyService`)
+**Issue:** Gemini API keys loaded via `VITE_GEMINI_API_KEY` are embedded in the compiled JavaScript bundle and visible in browser DevTools. This is a fundamental limitation of frontend-only implementations using Vite's environment variable system.
+
+**Location:** `src/services/AIService.ts:76-78`
+
+**Why This Happens:**
+- Vite bundles `VITE_*` environment variables into client-side JavaScript
+- Variables prefixed with `VITE_` are intentionally exposed for frontend use
+- No encryption or obfuscation can truly protect keys in client-side code
+- Attackers can extract keys via browser DevTools, source maps, or bundle inspection
+
+**Current Risk Assessment:**
+```
+✅ ACCEPTABLE FOR:
+- Local development environments
+- Personal projects and demos
+- Educational/prototype applications
+- Apps with strict API key restrictions enabled
+
+❌ NOT ACCEPTABLE FOR:
+- Production deployments with sensitive data
+- Public-facing applications without restrictions
+- Commercial products
+- Healthcare/HIPAA-compliant applications
+```
+
+**Current Mitigations (Partial Protection):**
+1. **API Key Restrictions (Google Cloud Console):**
+   - Set HTTP referrer restrictions (e.g., `yourapp.com/*`)
+   - Enable IP address allowlisting (if applicable)
+   - Monitor API usage dashboard for anomalies
+   - Set up billing alerts to detect abuse early
+
+2. **Rate Limiting (Application Level):**
+   - Circuit Breaker pattern (`CircuitBreaker.ts`) prevents cascade failures
+   - Automatic backoff after 5 consecutive failures
+   - 60-second recovery window
+
+3. **Usage Monitoring:**
+   - Track API call patterns in application logs
+   - Alert on unusual spike in requests
+   - Manual review of extraction logs
+
+**Recommended Long-Term Solution: Backend Proxy**
+
+The only secure solution is to move API key storage to the backend. See `BACKEND_MIGRATION_PLAN.md` for step-by-step implementation guide.
+
+**Backend Proxy Architecture:**
+```
+Frontend → Backend API → Gemini API
+(no key)    (key secure)  (authenticated)
+```
+
+Benefits:
+- API key never exposed to client
+- Server-side rate limiting and authentication
+- Request validation and sanitization
+- Centralized logging and monitoring
+- Compliance with security best practices
+
+**Interim Workaround (If Backend Not Feasible):**
+
+1. **Enable All API Key Restrictions:**
+   ```bash
+   # Google Cloud Console → API & Services → Credentials
+   # Edit your API key → Application restrictions
+   - Set HTTP referrers: yourapp.com/*, localhost:3000/*
+   - Enable quotas and rate limits
+   - Set daily budget caps
+   ```
+
+2. **Use Firebase App Check (Alternative):**
+   - Provides app attestation without backend
+   - Validates requests come from legitimate app instances
+   - Reduces (but doesn't eliminate) abuse risk
+
+3. **Implement Client-Side Rate Limiting:**
+   - Limit AI calls per session (already implemented via Circuit Breaker)
+   - Add user confirmation before expensive operations
+   - Cache results aggressively to reduce API calls
+
+**Documentation References:**
+- Implementation plan: `BACKEND_MIGRATION_PLAN.md` (to be created)
+- Google Cloud API Key Best Practices: https://cloud.google.com/docs/authentication/api-keys
+- Vite Environment Variables: https://vitejs.dev/guide/env-and-mode.html
+
+**Status:** ⚠️ DOCUMENTED - Backend migration planned for v2.0
 
 ### 2. LocalStorage Data
 

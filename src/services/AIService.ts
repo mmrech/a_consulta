@@ -49,6 +49,29 @@ import { categorizeAIError, isErrorRetryable, formatErrorMessage, logErrorWithCo
  *
  * In Vite, environment variables must be prefixed with VITE_ to be exposed to the client
  * Access via import.meta.env instead of process.env
+ *
+ * ⚠️ PRODUCTION WARNING: API KEY EXPOSURE RISK
+ * ================================================
+ * This implementation loads API keys from frontend environment variables, which exposes them
+ * in the compiled JavaScript bundle. This is a known security limitation of frontend-only
+ * implementations.
+ *
+ * RISK LEVEL: HIGH (10/10) - API keys visible in browser DevTools
+ *
+ * CURRENT MITIGATIONS:
+ * - Use Google Cloud Console API restrictions (HTTP referrers, IP allowlisting)
+ * - Monitor API usage for abuse via Cloud Console
+ * - Rate limiting via Circuit Breaker pattern
+ * - Acceptable for: demos, personal projects, development environments
+ *
+ * PRODUCTION RECOMMENDATIONS:
+ * - Implement backend proxy (see BACKEND_MIGRATION_PLAN.md)
+ * - Use Firebase App Check or similar attestation
+ * - Rotate API keys regularly
+ * - Set up billing alerts in Google Cloud Console
+ *
+ * TODO: Migrate to backend proxy architecture (like MedicalAgentBridge.callBackendAgent)
+ * See BACKEND_MIGRATION_PLAN.md for implementation steps
  */
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY ||
                 import.meta.env.VITE_API_KEY ||
