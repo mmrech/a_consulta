@@ -91,7 +91,7 @@ const FormManager = {
      * @returns boolean - Whether the field is valid
      */
     validateFieldUIUpdate: function(input: Element): boolean {
-        const result = this.validator.validateInput(input);
+        const result = this.validator.validateInput(input as HTMLElement);
         input.classList.toggle('validation-error', !result.valid);
 
         const messageEl = input.nextElementSibling as HTMLElement;
