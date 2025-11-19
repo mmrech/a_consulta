@@ -22,13 +22,13 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 // This prevents import.meta errors in MedicalAgentBridge
 jest.mock('../../src/services/MedicalAgentBridge', () => ({
   default: {
-    callAgent: jest.fn().mockResolvedValue({
+    callAgent: jest.fn(() => Promise.resolve({
       agentName: 'MockAgent',
       confidence: 0.9,
       extractedData: {},
       processingTime: 1000,
       validationStatus: 'validated'
-    })
+    }))
   }
 }));
 jest.mock('../../src/services/BackendClient');
@@ -177,7 +177,7 @@ describe('System Core Logic Integration', () => {
         sourceQuote: 'Patient demographics from table',
         pageNumber: 1
       };
-      MedicalAgentBridge.callAgent = jest.fn().mockResolvedValue(mockAgentResult);
+      MedicalAgentBridge.callAgent = jest.fn(() => Promise.resolve(mockAgentResult));
 
       // Process the data through the orchestrator
       const result = await AgentOrchestrator.processExtractedData(
@@ -239,7 +239,7 @@ describe('System Core Logic Integration', () => {
         processingTime: 1200,
         validationStatus: 'validated'
       };
-      MedicalAgentBridge.callAgent = jest.fn().mockResolvedValue(mockAgentResult);
+      MedicalAgentBridge.callAgent = jest.fn(() => Promise.resolve(mockAgentResult));
 
       const result = await AgentOrchestrator.processExtractedData([], [demographicsTable]);
 
@@ -298,7 +298,7 @@ describe('System Core Logic Integration', () => {
         validationStatus: 'validated',
         sourceQuote: 'Outcomes data from clinical trial'
       };
-      MedicalAgentBridge.callAgent = jest.fn().mockResolvedValue(mockAgentResult);
+      MedicalAgentBridge.callAgent = jest.fn(() => Promise.resolve(mockAgentResult));
 
       // Step 3: Process with orchestrator
       const result = await AgentOrchestrator.processExtractedData([], [mockTable]);
@@ -362,7 +362,7 @@ describe('System Core Logic Integration', () => {
         processingTime: 500,
         validationStatus: 'failed'
       };
-      MedicalAgentBridge.callAgent = jest.fn().mockResolvedValue(mockFailedResult);
+      MedicalAgentBridge.callAgent = jest.fn(() => Promise.resolve(mockFailedResult));
 
       // Should not throw, but handle gracefully
       const result = await AgentOrchestrator.processExtractedData([], [mockTable]);

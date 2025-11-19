@@ -1,7 +1,12 @@
 import '@testing-library/jest-dom';
 
-global.window = global.window || {};
-global.document = global.document || {};
+// Initialize jsdom globals if not already set
+if (typeof global.window === 'undefined') {
+  global.window = {} as Window & typeof globalThis;
+}
+if (typeof global.document === 'undefined') {
+  global.document = {} as Document;
+}
 
 global.window.pdfjsLib = {
   GlobalWorkerOptions: { workerSrc: '' },

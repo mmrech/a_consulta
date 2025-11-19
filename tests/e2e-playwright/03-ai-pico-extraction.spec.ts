@@ -146,14 +146,14 @@ test.describe('AI PICO Extraction (Real API)', () => {
 
   test('should track real AI extractions in trace log', async ({ page }) => {
     // Get initial extraction count
-    const initialCount = await getAIExtractionCount(page);
+    const initialCount = await getAIExtractionCount(page, 'gemini-pico');
 
     // Perform AI extraction
     await page.click('#generate-pico-btn');
     await waitForAIProcessing(page, 60000);
 
     // Verify extraction count increased
-    const newCount = await getAIExtractionCount(page);
+    const newCount = await getAIExtractionCount(page, 'gemini-pico');
     expect(newCount).toBeGreaterThan(initialCount);
 
     // Verify trace log shows gemini-pico method

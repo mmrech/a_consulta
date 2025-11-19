@@ -97,6 +97,50 @@ declare global {
     ClinicalExtractor: any;
     /** Convert blob to base64 */
     blobToBase64: (blob: Blob) => Promise<string>;
+    /** Backend proxy service for API requests */
+    BackendProxyService: any;
+    /** Trigger crash state save for testing */
+    triggerCrashStateSave: () => void;
+    /** Trigger manual recovery for testing */
+    triggerManualRecovery: () => Promise<void>;
+    /** Circuit breaker for fault tolerance */
+    CircuitBreaker: any;
+    /** Application configuration */
+    CONFIG: any;
+    /** Export data as Excel */
+    exportExcel: () => void;
+    /** Semantic search functionality */
+    semanticSearch: (query: string) => Promise<void>;
+    /** Clear search results */
+    clearSearchResults: () => void;
+    /** Navigate to next search result */
+    nextSearchResult: () => void;
+    /** Navigate to previous search result */
+    previousSearchResult: () => void;
+    /** Process PDF for citations */
+    processPDFForCitations: () => Promise<void>;
+    /** Extract citations from text */
+    extractCitations: (text: string) => any[];
+    /** Highlight citation in PDF */
+    highlightCitation: (index: number) => void;
+    /** Jump to citation location */
+    jumpToCitation: (index: number) => void;
+    /** Add annotation to PDF */
+    addAnnotation: (type: string, color: string) => void;
+    /** Remove annotation */
+    removeAnnotation: (id: string) => void;
+    /** Export annotations */
+    exportAnnotations: () => void;
+    /** Import annotations */
+    importAnnotations: (data: string) => void;
+    /** Clear all annotations */
+    clearAnnotations: () => void;
+    /** Upload PDF to backend */
+    uploadPDFToBackend: () => Promise<void>;
+    /** Sync with backend */
+    syncWithBackend: () => Promise<void>;
+    /** Check backend health */
+    checkBackendHealth: () => Promise<boolean>;
   }
 }
 

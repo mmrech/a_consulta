@@ -18,7 +18,7 @@ import MedicalAgentBridge from './MedicalAgentBridge';
 
 // ==================== TYPE DEFINITIONS ====================
 
-interface AgentResult {
+export interface AgentResult {
     agentName: string
     confidence: number
     extractedData: any
@@ -350,4 +350,4 @@ class AgentOrchestrator {
 
 // Export singleton instance
 export default new AgentOrchestrator();
-export type { EnhancedTable, EnhancedFigure, AgentResult, ClinicalDataType, FigureType };
+export type { EnhancedTable, EnhancedFigure, ClinicalDataType, FigureType };
