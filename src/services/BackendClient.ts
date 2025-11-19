@@ -98,6 +98,10 @@ class BackendClient {
     return this.accessToken !== null;
   }
 
+  getAccessToken(): string | null {
+    return this.accessToken;
+  }
+
   private async authenticatedRequest(
     endpoint: string,
     options: RequestInit = {}

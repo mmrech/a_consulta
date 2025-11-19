@@ -24,6 +24,7 @@ export interface ProxyConfig {
     cacheEnabled?: boolean;
     cacheTTL?: number;
     rateLimitPerSecond?: number;
+    autoInjectAuth?: boolean;  // Automatically inject auth headers
 }
 
 export interface ProxyRequest {
@@ -147,12 +148,14 @@ export const BackendProxyService = {
         cacheEnabled: true,
         cacheTTL: 300000, // 5 minutes
         rateLimitPerSecond: 10,
+        autoInjectAuth: true,  // Auto-inject auth by default
     } as ProxyConfig,
 
     cache: new ResponseCache(),
     rateLimiter: null as RateLimiter | null,
     requestQueue: [] as QueuedRequest[],
     isProcessingQueue: false,
+    BackendClient: null as any,  // Injected dependency
 
     /**
      * Configure the proxy service
@@ -166,6 +169,13 @@ export const BackendProxyService = {
         if (config.rateLimitPerSecond) {
             BackendProxyService.rateLimiter = new RateLimiter(config.rateLimitPerSecond);
         }
+    },
+
+    /**
+     * Set BackendClient dependency for auth header injection
+     */
+    setBackendClient: (client: any): void => {
+        BackendProxyService.BackendClient = client;
     },
 
     /**
@@ -213,15 +223,25 @@ export const BackendProxyService = {
                 await BackendProxyService.rateLimiter.acquire();
             }
 
+            // Auto-inject auth header if enabled and BackendClient available
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+                ...request.headers,
+            };
+
+            if (BackendProxyService.config.autoInjectAuth && BackendProxyService.BackendClient) {
+                const token = BackendProxyService.BackendClient.getAccessToken?.();
+                if (token) {
+                    headers['Authorization'] = `Bearer ${token}`;
+                }
+            }
+
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), timeout);
 
             const response = await fetch(url, {
                 method: request.method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...request.headers,
-                },
+                headers,
                 body: request.body ? JSON.stringify(request.body) : undefined,
                 signal: controller.signal,
             });

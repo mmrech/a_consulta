@@ -26,6 +26,7 @@ export interface AgentResult {
     validationStatus: 'validated' | 'needs_review' | 'failed'
     sourceQuote?: string
     pageNumber?: number
+    error?: string
 }
 
 interface EnhancedTable extends ExtractedTable {

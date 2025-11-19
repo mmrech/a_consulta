@@ -277,14 +277,28 @@ class MedicalAgentBridge {
             // Comprehensive error handling with user feedback
             logErrorWithContext(error, `Agent ${agentName}`);
             const categorized = categorizeAIError(error, `Agent ${agentName}`);
-            StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+
+            // Provide actionable error message
+            let userMessage = formatErrorMessage(categorized);
+
+            // Add specific guidance based on error type
+            if (error.message.includes('not available') || error.message.includes('healthCheck')) {
+                userMessage += '\n\n💡 Tip: The application works in frontend-only mode. Backend integration is optional.';
+            } else if (error.message.includes('authentication') || error.message.includes('auth')) {
+                userMessage += '\n\n💡 Tip: Check VITE_DEFAULT_USER_EMAIL and VITE_DEFAULT_USER_PASSWORD in .env.local';
+            } else if (error.message.includes('API key') || error.message.includes('GEMINI_API_KEY')) {
+                userMessage += '\n\n💡 Tip: Ensure GEMINI_API_KEY is set in .env.local for direct Gemini calls';
+            }
+
+            StatusManager.show(userMessage, 'error', 15000);
 
             return {
                 agentName,
                 confidence: 0,
                 extractedData: null,
                 processingTime: Date.now() - startTime,
-                validationStatus: 'failed'
+                validationStatus: 'failed',
+                error: error.message
             };
         }
     }
@@ -353,19 +367,27 @@ Respond with JSON:
         try {
             const authenticated = await AuthManager.ensureAuthenticated();
             if (!authenticated) {
-                throw new Error('Backend authentication failed');
+                // Don't throw - this is expected in frontend-only mode
+                throw new Error('Backend not available - will use Gemini fallback');
             }
 
             const docId = documentId || `temp-agent-${Date.now()}`;
             const response = await BackendClient.deepAnalysis(docId, '', prompt);
+
+            if (!response || !response.analysis) {
+                throw new Error('Backend returned invalid response');
+            }
 
             return response.analysis;
         } catch (error: any) {
             // Log backend-specific errors with context
             logErrorWithContext(error, `Backend Agent ${agentName}`);
 
-            const categorized = categorizeAIError(error, `Backend Agent ${agentName}`);
-            StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+            // Only show error if it's unexpected (not auth/availability issues)
+            if (!error.message.includes('not available') && !error.message.includes('authentication')) {
+                const categorized = categorizeAIError(error, `Backend Agent ${agentName}`);
+                StatusManager.show(formatErrorMessage(categorized), 'warning', 10000);
+            }
 
             throw new Error(`Backend agent ${agentName} failed: ${error.message}`);
         }

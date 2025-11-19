@@ -64,6 +64,8 @@ import FigureExtractor from './services/FigureExtractor';
 import TableExtractor from './services/TableExtractor';
 import AgentOrchestrator from './services/AgentOrchestrator';
 import DiagnosticsPanel from './services/DiagnosticsPanel';
+import BackendHealthMonitor from './services/BackendHealthMonitor';
+import BackendClient from './services/BackendClient';
 
 // Utilities
 import {
@@ -110,6 +112,12 @@ function setupDependencies() {
         getCanvas: () => PDFRenderer.currentCanvas,
         getScale: () => AppStateManager.getState().scale || 1.0
     });
+
+    // BackendHealthMonitor needs BackendClient for health checks
+    BackendHealthMonitor.setBackendClient(BackendClient);
+
+    // BackendProxyService needs BackendClient for auth header injection
+    BackendProxyService.setBackendClient(BackendClient);
 }
 
 // ==================== PDF.JS CONFIGURATION ====================
@@ -1057,11 +1065,20 @@ async function initializeApp() {
         await checkAndOfferRecovery();
         console.log('✓ Crash recovery check complete');
 
-        // 8. Initialize Diagnostics Panel
+        // 8. Initialize Backend Health Monitoring (optional, auto-checks every 60s)
+        // Health monitor configured but not auto-started to avoid unnecessary API calls
+        BackendHealthMonitor.configure({
+            checkInterval: 60000,    // 1 minute
+            cacheTTL: 30000,         // 30 seconds
+            autoStart: false         // Manual start only when needed
+        });
+        console.log('✓ Backend Health Monitor configured');
+
+        // 9. Initialize Diagnostics Panel
         DiagnosticsPanel.initialize();
         console.log('✓ Diagnostics Panel initialized');
 
-        // 9. Show initial status
+        // 10. Show initial status
         StatusManager.show('Clinical Extractor Ready. Load a PDF to begin.', 'info');
         console.log('✓ Clinical Extractor initialization complete');
 
