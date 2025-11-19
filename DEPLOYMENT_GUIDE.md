@@ -14,6 +14,8 @@ Complete deployment instructions for 6 platforms + Docker.
 | **Railway** | $5 trial | 10 min | Full control | ✅ Yes |
 | **Fly.io** | FREE tier | 20 min | Global edge | ✅ Yes |
 | **AWS Lightsail** | $3.50/mo | 30 min | Self-hosted | ✅ Yes |
+| **Hugging Face Spaces** 🤗 | FREE | 25 min | ML/AI community | ✅ Yes |
+| **Docker** 🐳 | Varies | 10 min | Any platform | ✅ Yes |
 
 ---
 
