@@ -255,6 +255,76 @@ export interface EventListenerRegistration {
   handler: EventListener;
 }
 
+// ==================== AI SERVICE TYPES ====================
+
+/**
+ * PICO-T extraction result from AI
+ */
+export interface PICOResult {
+  population: string;
+  intervention: string;
+  comparator: string;
+  outcomes: string;
+  timing: string;
+  studyType: string;
+}
+
+/**
+ * Summary generation result from AI
+ */
+export interface SummaryResult {
+  summary: string;
+}
+
+/**
+ * Field validation result from AI (distinct from form ValidationResult)
+ */
+export interface AIValidationResult {
+  is_supported: boolean;
+  quote: string;
+  confidence: number;
+}
+
+/**
+ * Metadata search result from AI
+ */
+export interface MetadataResult {
+  doi: string;
+  pmid: string;
+  journal: string;
+  year: string;
+}
+
+/**
+ * Single table extraction result
+ */
+export interface TableResult {
+  title: string;
+  description: string;
+  data: string[][];
+}
+
+/**
+ * Multiple tables extraction result
+ */
+export interface TablesResult {
+  tables: TableResult[];
+}
+
+/**
+ * Image analysis result from AI
+ */
+export interface ImageAnalysisResult {
+  analysis: string;
+}
+
+/**
+ * Deep analysis result from AI
+ */
+export interface DeepAnalysisResult {
+  analysis: string;
+}
+
 // ==================== DYNAMIC FIELD TYPES ====================
 
 /**
@@ -273,6 +343,73 @@ export type DynamicFieldType =
  * Surgical intervention types.
  */
 export type SurgicalType = 'SDC_EVD' | 'SDC_ALONE' | 'EVD_ALONE' | '';
+
+// ==================== BACKEND AI TYPES ====================
+
+/**
+ * PICO-T extraction response from backend
+ */
+export interface PICOResult {
+  population: string;
+  intervention: string;
+  comparator: string;
+  outcomes: string;
+  timing: string;
+  study_type: string;
+}
+
+/**
+ * Field validation response from backend
+ */
+export interface ValidationResult {
+  is_supported: boolean;
+  quote: string;
+  confidence: number;
+}
+
+/**
+ * Metadata extraction response from backend
+ */
+export interface MetadataResult {
+  doi?: string | null;
+  pmid?: string | null;
+  journal?: string | null;
+  year?: number | null;
+}
+
+/**
+ * Table data structure
+ */
+export interface TableData {
+  title: string;
+  description: string;
+  data: string[][];
+}
+
+/**
+ * Table extraction response from backend
+ */
+export interface TableResult {
+  tables: TableData[];
+}
+
+/**
+ * Backend AI client configuration
+ */
+export interface BackendAIClientConfig {
+  baseURL: string;
+  timeout: number;
+  retryAttempts: number;
+  retryDelay: number;
+}
+
+/**
+ * Backend API error response
+ */
+export interface BackendAPIError {
+  detail: string;
+  status?: number;
+}
 
 // ==================== WINDOW EXTENSIONS ====================
 

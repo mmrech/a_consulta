@@ -65,9 +65,44 @@ A production-ready web application for extracting structured data from clinical 
 ### Prerequisites
 
 - **Node.js** 16 or higher ([Download](https://nodejs.org/))
+- **Python** 3.11+ with Poetry (for backend) - [Install Poetry](https://python-poetry.org/docs/#installation)
 - **Gemini API Key** - Get your free key at [ai.google.dev](https://ai.google.dev/)
 
 ### Installation
+
+**Option 1: Backend-First (Recommended for Production) ⭐**
+
+This option provides enhanced security by keeping API keys on the backend only.
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/matheus-rech/clinical-extractor.git
+cd clinical-extractor
+
+# 2. Setup backend
+cd backend
+poetry install
+cp .env.example .env
+# Edit backend/.env and add your Gemini API key:
+# GEMINI_API_KEY=your_api_key_here
+
+# Start backend (in Terminal 1)
+poetry run uvicorn app.main:app --reload
+# Backend running at http://localhost:8000
+
+# 3. Setup frontend (in Terminal 2)
+cd ..  # Back to project root
+npm install
+echo 'VITE_BACKEND_URL=http://localhost:8000' > .env.local
+
+# Start frontend
+npm run dev
+# Frontend running at http://localhost:3000
+```
+
+**Option 2: Frontend-Only (Development/Fallback)**
+
+For quick testing or development without backend setup.
 
 ```bash
 # 1. Clone the repository
@@ -81,13 +116,14 @@ npm install
 cp .env.example .env.local
 # Edit .env.local and add your Gemini API key:
 # VITE_GEMINI_API_KEY=your_api_key_here
-# GEMINI_API_KEY=your_api_key_here
 
 # 4. Start development server
 npm run dev
 
 # 5. Open browser at http://localhost:3000
 ```
+
+**⚠️ Security Note:** Option 2 exposes API keys in the frontend bundle. Only use for development. Production deployments should use Option 1 (backend-first).
 
 ### First Extraction
 

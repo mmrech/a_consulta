@@ -5,16 +5,20 @@
 
 /**
  * BackendProxyService - API proxy and request management
- * 
+ *
  * Provides centralized API request handling with:
  * - Request/response interceptors
  * - Automatic retry with exponential backoff
- * - Request caching
+ * - Unified caching via CacheManager
  * - Rate limiting
  * - Error handling and logging
  * - CORS proxy support
  * - Request queuing
+ *
+ * @note Uses HTTPResponseCache from CacheManager for unified cache management
  */
+
+import { HTTPResponseCache } from './CacheManager';
 
 export interface ProxyConfig {
     baseURL?: string;
@@ -46,12 +50,6 @@ export interface ProxyResponse<T = any> {
     requestTime: number;
 }
 
-interface CacheEntry {
-    data: any;
-    timestamp: number;
-    ttl: number;
-}
-
 interface QueuedRequest<T = any> {
     request: ProxyRequest;
     resolve: (value: ProxyResponse<T>) => void;
@@ -60,45 +58,9 @@ interface QueuedRequest<T = any> {
 }
 
 /**
- * Simple cache with FIFO eviction for responses
+ * @deprecated - Using HTTPResponseCache from CacheManager instead
+ * This class is kept for backward compatibility but no longer used
  */
-class ResponseCache {
-    private cache = new Map<string, CacheEntry>();
-    private maxSize = 100;
-
-    set(key: string, data: any, ttl: number): void {
-        if (this.cache.size >= this.maxSize) {
-            const firstKey = this.cache.keys().next().value;
-            this.cache.delete(firstKey);
-        }
-
-        this.cache.set(key, {
-            data,
-            timestamp: Date.now(),
-            ttl,
-        });
-    }
-
-    get(key: string): any | null {
-        const entry = this.cache.get(key);
-        if (!entry) return null;
-
-        if (Date.now() - entry.timestamp > entry.ttl) {
-            this.cache.delete(key);
-            return null;
-        }
-
-        return entry.data;
-    }
-
-    clear(): void {
-        this.cache.clear();
-    }
-
-    size(): number {
-        return this.cache.size;
-    }
-}
 
 /**
  * Rate limiter using token bucket algorithm
@@ -146,12 +108,12 @@ export const BackendProxyService = {
         retryAttempts: 3,
         retryDelay: 1000,
         cacheEnabled: true,
-        cacheTTL: 300000, // 5 minutes
+        cacheTTL: 300000, // 5 minutes (note: HTTPResponseCache has its own TTL of 5 minutes)
         rateLimitPerSecond: 10,
         autoInjectAuth: true,  // Auto-inject auth by default
     } as ProxyConfig,
 
-    cache: new ResponseCache(),
+    // Using HTTPResponseCache from CacheManager (unified cache system)
     rateLimiter: null as RateLimiter | null,
     requestQueue: [] as QueuedRequest[],
     isProcessingQueue: false,
@@ -311,15 +273,17 @@ export const BackendProxyService = {
      * Make a proxied request
      */
     request: async <T = any>(request: ProxyRequest): Promise<ProxyResponse<T>> => {
+        // Check unified cache for GET requests
         if (
             request.cache !== false &&
             BackendProxyService.config.cacheEnabled &&
             request.method === 'GET'
         ) {
             const cacheKey = BackendProxyService.getCacheKey(request);
-            const cached = BackendProxyService.cache.get(cacheKey);
+            const cached = HTTPResponseCache.get(cacheKey);
 
             if (cached) {
+                console.log(`[Cache Hit] ${cacheKey}`);
                 return {
                     ...cached,
                     cached: true,
@@ -330,6 +294,7 @@ export const BackendProxyService = {
 
         const response = await BackendProxyService.executeRequest<T>(request);
 
+        // Store successful GET responses in unified cache
         if (
             request.cache !== false &&
             BackendProxyService.config.cacheEnabled &&
@@ -338,8 +303,8 @@ export const BackendProxyService = {
             response.status < 300
         ) {
             const cacheKey = BackendProxyService.getCacheKey(request);
-            const ttl = BackendProxyService.config.cacheTTL || 300000;
-            BackendProxyService.cache.set(cacheKey, response, ttl);
+            HTTPResponseCache.set(cacheKey, response);
+            console.log(`[Cache Miss] ${cacheKey} - cached`);
         }
 
         return response;
@@ -452,20 +417,18 @@ export const BackendProxyService = {
     },
 
     /**
-     * Clear cache
+     * Clear HTTP response cache (unified cache system)
      */
     clearCache: (): void => {
-        BackendProxyService.cache.clear();
+        HTTPResponseCache.clear();
+        console.log('[BackendProxyService] HTTP response cache cleared');
     },
 
     /**
-     * Get cache statistics
+     * Get cache statistics from unified cache system
      */
-    getCacheStats: (): { size: number; maxSize: number } => {
-        return {
-            size: BackendProxyService.cache.size(),
-            maxSize: 100,
-        };
+    getCacheStats: (): any => {
+        return HTTPResponseCache.getStats();
     },
 
     /**

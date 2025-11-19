@@ -29,34 +29,29 @@
  */
 
 import directGeminiClient from './DirectGeminiClient';
-import BackendAIClient from './BackendAIClient';
 import AppStateManager from '../state/AppStateManager';
 import ExtractionTracker from '../data/ExtractionTracker';
 import StatusManager from '../utils/status';
-import { PDFTextCache } from './CacheManager';
-import { logErrorWithContext, categorizeAIError, formatErrorMessage } from '../utils/aiErrorHandler';
+import LRUCache from '../utils/LRUCache';
+import { logErrorWithContext } from '../utils/aiErrorHandler';
 
 // ==================== PDF TEXT EXTRACTION & CACHING ====================
 
 /**
- * Using centralized PDFTextCache from CacheManager
- * - Max 50 entries (pages)
- * - Size limit: 10MB
- * - No TTL (valid until evicted)
+ * LRU Cache for PDF text with 50-page limit
  */
+const pdfTextLRUCache = new LRUCache<number, { fullText: string, items: Array<any> }>(50);
 
 // ==================== HELPER FUNCTIONS ====================
 
 /**
- * Gets text content from a specific PDF page, using unified cache if available.
+ * Gets text content from a specific PDF page, using LRU cache if available.
  * @param {number} pageNum - The page number.
  * @returns {Promise<{fullText: string, items: Array<any>}>}
  */
 async function getPageText(pageNum: number): Promise<{ fullText: string, items: Array<any> }> {
-    // Check unified cache first
-    const cached = PDFTextCache.get(pageNum);
+    const cached = pdfTextLRUCache.get(pageNum);
     if (cached) {
-        console.log(`[Cache Hit] PDF page ${pageNum}`);
         return cached;
     }
 
@@ -76,17 +71,12 @@ async function getPageText(pageNum: number): Promise<{ fullText: string, items: 
             }
         });
         const pageData = { fullText, items };
-
-        // Store in unified cache
-        PDFTextCache.set(pageNum, pageData);
-        console.log(`[Cache Miss] PDF page ${pageNum} - cached (${Math.round(fullText.length / 1024)}KB)`);
-
+        pdfTextLRUCache.set(pageNum, pageData);
         return pageData;
     } catch (error) {
         console.error(`Error getting text from page ${pageNum}:`, error);
         logErrorWithContext(error, `PDF text extraction - page ${pageNum}`);
 
-        // Throw error instead of silently returning empty data
         throw new Error(
             `Failed to extract text from page ${pageNum}. ` +
             `${error instanceof Error ? error.message : 'Unknown error'}`
@@ -107,7 +97,7 @@ async function getAllPdfText(): Promise<string | null> {
 
     let fullText = "";
     const failedPages: number[] = [];
-    StatusManager.show("Reading full document text...", "info", 60000); // Long timeout
+    StatusManager.show("Reading full document text...", "info", 60000);
 
     for (let i = 1; i <= state.totalPages; i++) {
         try {
@@ -120,11 +110,9 @@ async function getAllPdfText(): Promise<string | null> {
         } catch (error) {
             console.error(`Failed to read page ${i}:`, error);
             failedPages.push(i);
-            // Continue with other pages instead of failing completely
         }
     }
 
-    // Report failed pages to user
     if (failedPages.length > 0) {
         StatusManager.show(
             `⚠️ Warning: Failed to read ${failedPages.length} page(s): ${failedPages.join(', ')}`,
@@ -133,7 +121,6 @@ async function getAllPdfText(): Promise<string | null> {
         );
     }
 
-    // Validate that we got some text
     if (!fullText.trim()) {
         throw new Error(
             'No text could be extracted from the PDF. The document may be image-based, corrupted, or have no selectable text.'
@@ -146,8 +133,6 @@ async function getAllPdfText(): Promise<string | null> {
 
 /**
  * Converts a Blob to base64 string
- * @param {Blob} blob - The blob to convert
- * @returns {Promise<string>} - Base64 encoded string
  */
 function blobToBase64(blob: Blob): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -163,8 +148,7 @@ function blobToBase64(blob: Blob): Promise<string> {
 // ==================== AI EXTRACTION FUNCTIONS ====================
 
 /**
- * ✨ Generates PICO-T summary using Gemini API.
- * Model: gemini-2.5-flash (via DirectGeminiClient)
+ * ✨ Generates PICO-T summary using DirectGeminiClient
  */
 async function generatePICO(): Promise<void> {
     const state = AppStateManager.getState();
@@ -183,25 +167,12 @@ async function generatePICO(): Promise<void> {
     StatusManager.show('✨ Analyzing document for PICO-T summary...', 'info');
 
     try {
-        // Get full text of the document to provide as context
         const documentText = await getAllPdfText();
         if (!documentText) {
             throw new Error("Could not read text from the PDF.");
         }
 
-        let data;
-        try {
-            // PRIMARY: Try backend API first
-            StatusManager.show('✨ Generating PICO via backend...', 'info');
-            data = await BackendAIClient.generatePICO(documentText);
-            console.log('[Backend Success] PICO generated via backend API');
-        } catch (backendError: any) {
-            // FALLBACK: Use direct Gemini client
-            console.warn('[Backend Failed] Falling back to direct Gemini:', backendError.message);
-            StatusManager.show('⚡ Retrying with direct API...', 'info');
-            data = await directGeminiClient.generatePICO(documentText);
-            console.log('[Fallback Success] PICO generated via direct Gemini');
-        }
+        const data = await directGeminiClient.generatePICO(documentText);
 
         // Populate fields
         const populationField = document.getElementById('eligibility-population') as HTMLInputElement;
@@ -220,7 +191,7 @@ async function generatePICO(): Promise<void> {
 
         // Add to trace log
         const state2 = AppStateManager.getState();
-        const coords = { x: 0, y: 0, width: 0, height: 0 }; // AI extractions have no coords
+        const coords = { x: 0, y: 0, width: 0, height: 0 };
         ExtractionTracker.addExtraction({ fieldName: 'population (AI)', text: data.population, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
         ExtractionTracker.addExtraction({ fieldName: 'intervention (AI)', text: data.intervention, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
         ExtractionTracker.addExtraction({ fieldName: 'comparator (AI)', text: data.comparator, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
@@ -241,8 +212,7 @@ async function generatePICO(): Promise<void> {
 }
 
 /**
- * ✨ Generates a summary of key findings using Gemini API.
- * Model: gemini-flash-latest
+ * ✨ Generates summary using DirectGeminiClient
  */
 async function generateSummary(): Promise<void> {
     const state = AppStateManager.getState();
@@ -266,26 +236,11 @@ async function generateSummary(): Promise<void> {
             throw new Error("Could not read text from the PDF.");
         }
 
-        let summaryResult;
-        try {
-            // PRIMARY: Try backend API first
-            StatusManager.show('✨ Generating summary via backend...', 'info');
-            summaryResult = await BackendAIClient.generateSummary(documentText);
-            console.log('[Backend Success] Summary generated via backend API');
-        } catch (backendError: any) {
-            // FALLBACK: Use direct Gemini client
-            console.warn('[Backend Failed] Falling back to direct Gemini:', backendError.message);
-            StatusManager.show('⚡ Retrying with direct API...', 'info');
-            summaryResult = await directGeminiClient.generateSummary(documentText);
-            console.log('[Fallback Success] Summary generated via direct Gemini');
-        }
-
-        const summaryText = typeof summaryResult === 'string' ? summaryResult : summaryResult.summary;
+        const summaryText = await directGeminiClient.generateSummary(documentText);
 
         const summaryField = document.getElementById('predictorsPoorOutcomeSurgical') as HTMLTextAreaElement;
         if (summaryField) summaryField.value = summaryText;
 
-        // Add to trace log
         const state2 = AppStateManager.getState();
         ExtractionTracker.addExtraction({
             fieldName: 'summary (AI)',
@@ -300,8 +255,7 @@ async function generateSummary(): Promise<void> {
 
     } catch (error: any) {
         logErrorWithContext(error, 'Summary generation');
-        const categorized = categorizeAIError(error, 'Summary generation');
-        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+        StatusManager.show(error.message || 'Failed to generate summary', 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         const loadingEl = document.getElementById('summary-loading');
@@ -310,8 +264,7 @@ async function generateSummary(): Promise<void> {
 }
 
 /**
- * ✨ Validates a field's content against the PDF text using Gemini.
- * Model: gemini-2.5-pro
+ * ✨ Validates field using DirectGeminiClient
  */
 async function validateFieldWithAI(fieldId: string): Promise<void> {
     const state = AppStateManager.getState();
@@ -346,37 +299,19 @@ async function validateFieldWithAI(fieldId: string): Promise<void> {
             throw new Error("Could not read text from PDF for validation.");
         }
 
-        let validation;
-        try {
-            // PRIMARY: Try backend API first
-            StatusManager.show('✨ Validating via backend...', 'info');
-            validation = await BackendAIClient.validateField(fieldId, claim, documentText);
-            console.log('[Backend Success] Validation via backend API');
-        } catch (backendError: any) {
-            // FALLBACK: Use direct Gemini client
-            console.warn('[Backend Failed] Falling back to direct Gemini:', backendError.message);
-            StatusManager.show('⚡ Retrying with direct API...', 'info');
-            validation = await directGeminiClient.validateField(fieldId, claim, documentText);
-            console.log('[Fallback Success] Validation via direct Gemini');
-        }
+        const validation = await directGeminiClient.validateField(fieldId, claim, documentText);
 
-        // Normalize field names for consistency (backend uses different naming)
-        const is_supported = validation.is_supported;
-        const supporting_quote = validation.supporting_quote || validation.quote || '';
-        const confidence_score = validation.confidence_score || validation.confidence || 0;
-
-        if (is_supported) {
-            StatusManager.show(`✓ VALIDATED (Confidence: ${Math.round(confidence_score * 100)}%): "${supporting_quote}"`, 'success', 10000);
+        if (validation.is_supported) {
+            StatusManager.show(`✓ VALIDATED (Confidence: ${Math.round(validation.confidence_score * 100)}%): "${validation.supporting_quote}"`, 'success', 10000);
             field.style.borderColor = 'var(--success-green)';
         } else {
-            StatusManager.show(`✗ NOT SUPPORTED (Confidence: ${Math.round(confidence_score * 100)}%). Reason: "${supporting_quote}"`, 'warning', 10000);
+            StatusManager.show(`✗ NOT SUPPORTED (Confidence: ${Math.round(validation.confidence_score * 100)}%). Reason: "${validation.supporting_quote}"`, 'warning', 10000);
             field.style.borderColor = 'var(--warning-orange)';
         }
 
     } catch (error: any) {
         logErrorWithContext(error, 'Field validation');
-        const categorized = categorizeAIError(error, 'Field validation');
-        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+        StatusManager.show(error.message || 'Failed to validate field', 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         StatusManager.showLoading(false);
@@ -384,8 +319,7 @@ async function validateFieldWithAI(fieldId: string): Promise<void> {
 }
 
 /**
- * ✨ Finds study metadata using Gemini with Google Search.
- * Model: gemini-2.5-flash + Google Search
+ * ✨ Finds metadata using DirectGeminiClient
  */
 async function findMetadata(): Promise<void> {
     const state = AppStateManager.getState();
@@ -406,19 +340,7 @@ async function findMetadata(): Promise<void> {
     StatusManager.show('✨ Searching Google for metadata...', 'info');
 
     try {
-        let data;
-        try {
-            // PRIMARY: Try backend API first
-            StatusManager.show('✨ Searching metadata via backend...', 'info');
-            data = await BackendAIClient.findMetadata(citationText);
-            console.log('[Backend Success] Metadata search via backend API');
-        } catch (backendError: any) {
-            // FALLBACK: Use direct Gemini client
-            console.warn('[Backend Failed] Falling back to direct Gemini:', backendError.message);
-            StatusManager.show('⚡ Retrying with direct API...', 'info');
-            data = await directGeminiClient.findMetadata(citationText);
-            console.log('[Fallback Success] Metadata search via direct Gemini');
-        }
+        const data = await directGeminiClient.findMetadata(citationText);
 
         const doiField = document.getElementById('doi') as HTMLInputElement;
         const pmidField = document.getElementById('pmid') as HTMLInputElement;
@@ -434,8 +356,7 @@ async function findMetadata(): Promise<void> {
 
     } catch (error: any) {
         logErrorWithContext(error, 'Metadata search');
-        const categorized = categorizeAIError(error, 'Metadata search');
-        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+        StatusManager.show(error.message || 'Failed to find metadata', 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         const loadingEl = document.getElementById('metadata-loading');
@@ -444,8 +365,7 @@ async function findMetadata(): Promise<void> {
 }
 
 /**
- * ✨ Extracts tables from the document using Gemini Pro.
- * Model: gemini-2.5-pro
+ * ✨ Extracts tables using DirectGeminiClient
  */
 async function handleExtractTables(): Promise<void> {
     const state = AppStateManager.getState();
@@ -462,19 +382,7 @@ async function handleExtractTables(): Promise<void> {
         const documentText = await getAllPdfText();
         if (!documentText) return;
 
-        let result;
-        try {
-            // PRIMARY: Try backend API first
-            StatusManager.show('✨ Extracting tables via backend...', 'info');
-            result = await BackendAIClient.extractTables(documentText);
-            console.log('[Backend Success] Table extraction via backend API');
-        } catch (backendError: any) {
-            // FALLBACK: Use direct Gemini client
-            console.warn('[Backend Failed] Falling back to direct Gemini:', backendError.message);
-            StatusManager.show('⚡ Retrying with direct API...', 'info');
-            result = await directGeminiClient.extractTables(documentText);
-            console.log('[Fallback Success] Table extraction via direct Gemini');
-        }
+        const result = await directGeminiClient.extractTables(documentText);
 
         if (result.tables && result.tables.length > 0 && resultsContainer) {
             renderTables(result.tables, resultsContainer);
@@ -486,9 +394,8 @@ async function handleExtractTables(): Promise<void> {
 
     } catch (error: any) {
         logErrorWithContext(error, 'Table extraction');
-        const categorized = categorizeAIError(error, 'Table extraction');
-        if (resultsContainer) resultsContainer.innerText = `Error: ${categorized.userMessage}`;
-        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+        if (resultsContainer) resultsContainer.innerText = `Error: ${error.message || 'Failed to extract tables'}`;
+        StatusManager.show(error.message || 'Failed to extract tables', 'error', 15000);
     } finally {
         StatusManager.showLoading(false);
     }
@@ -496,14 +403,12 @@ async function handleExtractTables(): Promise<void> {
 
 /**
  * Renders extracted tables in the UI
- * @param {Array} tables - Array of table objects
- * @param {HTMLElement} container - Container element to render tables into
  */
 function renderTables(tables: any[], container: HTMLElement): void {
     container.innerHTML = '';
     tables.forEach((tableData, index) => {
         const details = document.createElement('details');
-        details.open = true; // Open by default
+        details.open = true;
 
         const summary = document.createElement('summary');
         summary.textContent = `Table ${index + 1}: ${tableData.title || 'Untitled'}`;
@@ -518,7 +423,6 @@ function renderTables(tables: any[], container: HTMLElement): void {
         const tbody = document.createElement('tbody');
 
         if (tableData.data && tableData.data.length > 0) {
-            // Assume first row is header
             const headerRow = document.createElement('tr');
             tableData.data[0].forEach((headerText: string) => {
                 const th = document.createElement('th');
@@ -527,7 +431,6 @@ function renderTables(tables: any[], container: HTMLElement): void {
             });
             thead.appendChild(headerRow);
 
-            // The rest are body rows
             for (let i = 1; i < tableData.data.length; i++) {
                 const bodyRow = document.createElement('tr');
                 tableData.data[i].forEach((cellText: string) => {
@@ -551,8 +454,7 @@ function renderTables(tables: any[], container: HTMLElement): void {
 }
 
 /**
- * ✨ Analyzes an uploaded image with a text prompt using Gemini Flash.
- * Model: gemini-2.5-flash
+ * ✨ Analyzes image using DirectGeminiClient
  */
 async function handleImageAnalysis(): Promise<void> {
     const fileInput = document.getElementById('image-upload-input') as HTMLInputElement;
@@ -575,37 +477,21 @@ async function handleImageAnalysis(): Promise<void> {
 
     try {
         const base64Data = await blobToBase64(file);
+        const result = await directGeminiClient.analyzeImage(base64Data, file.type, prompt);
 
-        let analysisResult;
-        try {
-            // PRIMARY: Try backend API first
-            StatusManager.show('✨ Analyzing image via backend...', 'info');
-            const result = await BackendAIClient.analyzeImage(base64Data, prompt);
-            analysisResult = typeof result === 'string' ? result : result.analysis;
-            console.log('[Backend Success] Image analysis via backend API');
-        } catch (backendError: any) {
-            // FALLBACK: Use direct Gemini client
-            console.warn('[Backend Failed] Falling back to direct Gemini:', backendError.message);
-            StatusManager.show('⚡ Retrying with direct API...', 'info');
-            analysisResult = await directGeminiClient.analyzeImage(base64Data, file.type, prompt);
-            console.log('[Fallback Success] Image analysis via direct Gemini');
-        }
-
-        if (resultsContainer) resultsContainer.innerText = analysisResult;
+        if (resultsContainer) resultsContainer.innerText = result;
 
     } catch (error: any) {
         logErrorWithContext(error, 'Image analysis');
-        const categorized = categorizeAIError(error, 'Image analysis');
-        if (resultsContainer) resultsContainer.innerText = `Error: ${categorized.userMessage}`;
-        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+        if (resultsContainer) resultsContainer.innerText = `Error: ${error.message || 'Failed to analyze image'}`;
+        StatusManager.show(error.message || 'Failed to analyze image', 'error', 15000);
     } finally {
         StatusManager.showLoading(false);
     }
 }
 
 /**
- * ✨ Performs deep analysis on the document text using Gemini Pro with thinking budget.
- * Model: gemini-2.5-pro (with 32768 thinking budget)
+ * ✨ Performs deep analysis using DirectGeminiClient
  */
 async function handleDeepAnalysis(): Promise<void> {
     const state = AppStateManager.getState();
@@ -629,29 +515,14 @@ async function handleDeepAnalysis(): Promise<void> {
         const documentText = await getAllPdfText();
         if (!documentText) return;
 
-        let analysisResult;
-        try {
-            // PRIMARY: Try backend API first
-            StatusManager.show('✨ Performing deep analysis via backend...', 'info');
-            const result = await BackendAIClient.deepAnalysis(documentText, prompt);
-            analysisResult = typeof result === 'string' ? result : result.analysis;
-            console.log('[Backend Success] Deep analysis via backend API');
-        } catch (backendError: any) {
-            // FALLBACK: Use direct Gemini client
-            console.warn('[Backend Failed] Falling back to direct Gemini:', backendError.message);
-            StatusManager.show('⚡ Retrying with direct API...', 'info');
-            const fullPrompt = `Based on the following document text, please answer this question: ${prompt}\n\nDOCUMENT TEXT:\n${documentText}`;
-            analysisResult = await directGeminiClient.deepAnalysis(documentText, fullPrompt);
-            console.log('[Fallback Success] Deep analysis via direct Gemini');
-        }
+        const result = await directGeminiClient.deepAnalysis(documentText, prompt);
 
-        if (resultsContainer) resultsContainer.innerText = analysisResult;
+        if (resultsContainer) resultsContainer.innerText = result;
 
     } catch (error: any) {
         logErrorWithContext(error, 'Deep analysis');
-        const categorized = categorizeAIError(error, 'Deep analysis');
-        if (resultsContainer) resultsContainer.innerText = `Error: ${categorized.userMessage}`;
-        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+        if (resultsContainer) resultsContainer.innerText = `Error: ${error.message || 'Failed to perform deep analysis'}`;
+        StatusManager.show(error.message || 'Failed to perform deep analysis', 'error', 15000);
     } finally {
         StatusManager.showLoading(false);
     }
@@ -661,6 +532,7 @@ async function handleDeepAnalysis(): Promise<void> {
 
 /**
  * AIService object - Central manager for all AI operations
+ * Now uses DirectGeminiClient for all Gemini API interactions
  */
 const AIService = {
     generatePICO,
@@ -670,7 +542,7 @@ const AIService = {
     handleExtractTables,
     handleImageAnalysis,
     handleDeepAnalysis,
-    // Helper functions (exported for potential internal use)
+    // Helper functions
     getPageText,
     getAllPdfText,
 };

@@ -22,10 +22,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Environment Setup:**
 ```bash
-# Required: Gemini API key
-echo 'VITE_GEMINI_API_KEY=your_key_here' > .env.local
+# Option 1: Backend-First (Recommended - Production)
+# Backend handles API keys securely
+echo 'VITE_BACKEND_URL=http://localhost:8000' > .env.local
 npm install
 npm run dev  # Opens http://localhost:3000
+
+# Option 2: Direct Gemini (Development/Fallback)
+# Frontend calls Gemini API directly
+echo 'VITE_GEMINI_API_KEY=your_key_here' > .env.local
+npm install
+npm run dev
+
+# Backend setup (if using Option 1):
+cd backend
+poetry install
+cp .env.example .env
+# Add GEMINI_API_KEY to backend/.env
+poetry run uvicorn app.main:app --reload
 ```
 
 **Common Tasks:**
@@ -66,10 +80,35 @@ npm install
 ```
 
 ### Development Workflow
-```bash
-# Start development server (configured for port 3000)
-npm run dev
 
+**Backend-First Setup (Recommended):**
+
+```bash
+# Terminal 1: Start backend
+cd backend
+poetry install
+cp .env.example .env
+# Add GEMINI_API_KEY to backend/.env
+poetry run uvicorn app.main:app --reload
+
+# Terminal 2: Start frontend
+npm install
+echo 'VITE_BACKEND_URL=http://localhost:8000' > .env.local
+npm run dev  # Opens http://localhost:3000
+```
+
+**Frontend-Only Setup (Development/Fallback):**
+
+```bash
+# Single terminal
+npm install
+echo 'VITE_GEMINI_API_KEY=your_key_here' > .env.local
+npm run dev
+```
+
+**Common Commands:**
+
+```bash
 # Build for production
 npm run build
 
@@ -87,6 +126,9 @@ npm run test:coverage
 
 # TypeScript type checking (lint)
 npm run lint
+
+# Backend tests (if using backend)
+cd backend && poetry run pytest
 ```
 
 ### Testing & Debugging
@@ -294,6 +336,116 @@ The app follows a strict initialization order in `main.ts`:
 9. **Event Listeners** - Setup all DOM interactions
 10. **Window API Exposure** - 40+ functions exposed globally ⭐ UPDATED
 11. **Initial Status** - Show "Ready" message
+
+### 4. Unified Caching System ⭐ NEW (Phase 4 Complete)
+
+The application features a **production-ready unified caching system** that consolidates all caching implementations into a centralized, configurable architecture.
+
+**CacheManager** (`src/services/CacheManager.ts`)
+- Central management of all cache instances
+- Named cache instances with custom configurations
+- Comprehensive statistics across all caches
+- Global cache clearing and monitoring
+
+**Enhanced LRUCache** (`src/utils/LRUCache.ts`)
+- **TTL (Time To Live)**: Automatic expiration of cached entries
+- **Memory Size Limits**: Track and enforce memory usage limits (bytes)
+- **Eviction Callbacks**: Execute custom logic when entries are evicted
+- **Access Count Tracking**: Monitor how often entries are accessed
+- **Hit/Miss Tracking**: Calculate cache hit rates
+- **Comprehensive Statistics**: Detailed cache performance metrics
+
+**Pre-configured Cache Instances:**
+
+1. **PDFTextCache** - PDF page text caching
+   ```typescript
+   import { PDFTextCache } from './services/CacheManager';
+
+   // Max 50 entries (pages), 10MB limit, no TTL
+   const cached = PDFTextCache.get(pageNum);
+   PDFTextCache.set(pageNum, pageData);
+   ```
+
+2. **HTTPResponseCache** - API response caching
+   ```typescript
+   import { HTTPResponseCache } from './services/CacheManager';
+
+   // Max 100 entries, 5MB limit, 5 minute TTL
+   const cached = HTTPResponseCache.get(cacheKey);
+   HTTPResponseCache.set(cacheKey, response);
+   ```
+
+3. **AIResultCache** - AI extraction result caching
+   ```typescript
+   import { AIResultCache } from './services/CacheManager';
+
+   // Max 50 entries, 10 minute TTL, no size limit
+   const cached = AIResultCache.get(key);
+   AIResultCache.set(key, aiResult);
+   ```
+
+**Creating Custom Caches:**
+```typescript
+import { CacheManager } from './services/CacheManager';
+
+const SessionCache = CacheManager.getCache<string, UserSession>('user-sessions', {
+    maxSize: 1000,
+    ttl: 3600000,  // 1 hour
+    sizeLimit: 50 * 1024 * 1024,  // 50MB
+    onEvict: (key, session) => {
+        console.log(`Session expired: ${session.userId}`);
+    }
+});
+```
+
+**Cache Statistics & Monitoring:**
+```typescript
+import { CacheManager } from './services/CacheManager';
+
+// Get all cache statistics
+const allStats = CacheManager.getAllStats();
+
+// Example output:
+{
+  "pdf-text": {
+    size: 15,
+    maxSize: 50,
+    utilizationPercent: 30,
+    memoryUsage: 2458624,  // ~2.5MB
+    hitRate: 85.2,
+    hitCount: 142,
+    missCount: 25,
+    entries: [
+      { key: "5", accessCount: 23, age: 12453, size: 156432 },
+      ...
+    ]
+  },
+  "http-responses": { ... }
+}
+
+// Clear specific cache
+CacheManager.clear('pdf-text');
+
+// Clear all caches
+CacheManager.clearAll();
+```
+
+**Performance Benefits:**
+- **Memory Management**: Automatic eviction based on size limits
+- **Hit Rate Tracking**: Real-time cache effectiveness monitoring
+- **TTL Management**: Automatic expiration of stale entries
+- **Consistent Eviction**: LRU strategy across all caches
+- **Eviction Callbacks**: Custom cleanup logic on eviction
+
+**Console Logging:**
+All cache operations log to console for debugging:
+```
+[Cache Hit] PDF page 5
+[Cache Miss] PDF page 12 - cached (152KB)
+[PDFTextCache] Evicted page 3 (145KB)
+[Cache Hit] GET:/api/extractions
+[HTTPResponseCache] Evicted GET:/api/old-request
+```
 
 ---
 
@@ -924,9 +1076,42 @@ BackendHealthMonitor.configure({
 
 ---
 
-## AI Service Architecture
+## AI Service Architecture ⭐ UPDATED (Backend Migration v2.0)
 
-**AIService** (`src/services/AIService.ts`) provides 7 AI-powered functions:
+### Overview: 3-Tier Backend-First Architecture
+
+The application now uses a **backend-first architecture with automatic fallback** to direct Gemini API calls. This provides enhanced security (API keys on backend), better performance (server-side caching), and resilience (automatic failover).
+
+```
+Frontend (AIService.ts)
+    ↓ tries backend first
+BackendAIClient.ts → HTTP → Python FastAPI Backend → Gemini API
+    ↓ on backend failure, falls back to
+DirectGeminiClient.ts → Gemini API (direct)
+```
+
+### Core Services
+
+**1. AIService** (`src/services/AIService.ts` - 683 lines)
+- Orchestrates all AI operations with UI updates
+- Backend-first routing with automatic fallback
+- PDF text extraction with LRU caching (50 pages)
+- Form field population and extraction tracking
+- User-facing status messages
+
+**2. BackendAIClient** (`src/services/BackendAIClient.ts` - 345 lines)
+- HTTP client for Python FastAPI backend
+- All 7 AI functions as REST endpoints
+- Proper timeout configurations (30s-120s)
+- Health check endpoint
+- Comprehensive error handling
+
+**3. DirectGeminiClient** (`src/services/DirectGeminiClient.ts` - 633 lines)
+- Fallback client for direct Gemini API calls
+- Retry logic with exponential backoff
+- Circuit breaker for fault tolerance
+- Same 7 functions as backend
+- Singleton pattern for app-wide use
 
 ### Gemini Model Distribution
 - **gemini-2.5-flash** (Fast, 3 functions): PICO, metadata with Google Search, image analysis
@@ -971,34 +1156,60 @@ BackendHealthMonitor.configure({
 - **Config:** `thinkingBudget: 32768`
 - **Purpose:** Complex reasoning with extended thinking
 
-### AI Error Handling Pattern
-All AI functions follow this pattern:
+### Backend-First Request Pattern
+
+All 7 AI functions now follow this backend-first pattern with automatic fallback:
+
 ```typescript
-try {
+async function aiFunction() {
     // 1. Check prerequisites
-    if (!state.pdfDoc) { show warning; return; }
-    if (state.isProcessing) { show warning; return; }
+    const state = AppStateManager.getState();
+    if (!state.pdfDoc) { StatusManager.show('No PDF loaded', 'error'); return; }
+    if (state.isProcessing) { StatusManager.show('Already processing', 'error'); return; }
 
     // 2. Set processing state
     AppStateManager.setState({ isProcessing: true });
     StatusManager.show('Processing...', 'info');
 
-    // 3. Perform AI operation
-    const result = await ai.models.generateContent(...);
+    try {
+        // 3. Get required data
+        const documentText = await getAllPdfText();
 
-    // 4. Process and display results
-    // Populate UI, log extractions
+        let result;
+        try {
+            // 4. PRIMARY: Try backend API first
+            StatusManager.show('✨ Processing via backend...', 'info');
+            result = await BackendAIClient.generatePICO(documentText);
+            console.log('[Backend Success] Processed via backend API');
+        } catch (backendError: any) {
+            // 5. FALLBACK: Use direct Gemini client
+            console.warn('[Backend Failed] Falling back to direct Gemini:', backendError.message);
+            StatusManager.show('⚡ Retrying with direct API...', 'info');
+            result = await directGeminiClient.generatePICO(documentText);
+            console.log('[Fallback Success] Processed via direct Gemini');
+        }
 
-    StatusManager.show('Success!', 'success');
-} catch (error) {
-    console.error("AI Error:", error);
-    StatusManager.show(`Failed: ${error.message}`, 'error');
-} finally {
-    // 5. Always reset processing state
-    AppStateManager.setState({ isProcessing: false });
-    StatusManager.showLoading(false);
+        // 6. Process and display results
+        // Populate UI fields, log extractions
+        StatusManager.show('Success!', 'success');
+
+    } catch (error: any) {
+        // 7. Error handling
+        logErrorWithContext(error, 'AI Operation');
+        StatusManager.show(error.message, 'error');
+    } finally {
+        // 8. Always reset processing state
+        AppStateManager.setState({ isProcessing: false });
+        StatusManager.showLoading(false);
+    }
 }
 ```
+
+**Key Features:**
+- **Transparent Fallback**: Users unaware of backend/direct routing
+- **Automatic Retry**: Backend failure triggers instant fallback
+- **Observability**: Console logs show `[Backend Success]` or `[Fallback Success]`
+- **Zero Breaking Changes**: Existing function signatures preserved
 
 ---
 
@@ -1478,14 +1689,47 @@ interface Extraction {
 ## Configuration & Security
 
 ### Configuration (`src/config/index.ts`)
+
 ```typescript
 const CONFIG = {
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    // Backend URL (recommended for production)
+    BACKEND_URL: import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000',
+
+    // Gemini API key (fallback only - NOT recommended for production)
+    GEMINI_API_KEY: import.meta.env.VITE_GEMINI_API_KEY,
+
+    // PDF.js Configuration
     PDF_WORKER: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
     PDF_CMAP_URL: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
     PDF_CMAP_PACKED: true
 };
 ```
+
+### Environment Variables ⚠️ BREAKING CHANGES (Backend Migration v2.0)
+
+**Production Setup (Recommended):**
+
+```bash
+# Frontend .env.local
+VITE_BACKEND_URL=http://localhost:8000
+
+# Backend .env
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+**Development/Fallback Setup:**
+
+```bash
+# Frontend .env.local (direct Gemini calls)
+VITE_GEMINI_API_KEY=your_gemini_api_key_here
+VITE_BACKEND_URL=http://localhost:8000  # Optional
+```
+
+**Migration Notes:**
+- **REMOVED**: `VITE_GEMINI_API_KEY` from frontend (moved to backend for security)
+- **ADDED**: `VITE_BACKEND_URL` for backend API endpoint
+- **Security**: API keys now only on backend, never exposed to frontend bundle
+- **Fallback**: Direct Gemini client still works if `VITE_GEMINI_API_KEY` provided
 
 ### Security Utils (`src/utils/security.ts`)
 - **sanitizeText()** - Removes HTML, limits to 10,000 chars
