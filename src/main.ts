@@ -95,6 +95,10 @@ function setupDependencies() {
         pdfRenderer: PDFRenderer
     });
 
+    // Explicitly reload data after dependencies are set (fixes E2E test reliability)
+    // This ensures localStorage data is loaded with proper dependencies in place
+    ExtractionTracker.loadFromStorage();
+
     // DynamicFields needs FormManager (must be set before FormManager init)
     setDynamicFieldsDeps({
         formManager: FormManager

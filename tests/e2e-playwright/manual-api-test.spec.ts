@@ -17,7 +17,19 @@ test.describe('Manual Real-World API Test', () => {
     // Set longer timeout for real API call
     test.setTimeout(120000); // 2 minutes
 
-    console.log('\n🚀 Starting manual real-world API test...\n');
+    // 🔑 VALIDATE API KEY FIRST - Skip test if not configured
+    const apiKey = process.env.VITE_GEMINI_API_KEY;
+
+    if (!apiKey || apiKey === 'your_key_here' || apiKey.length < 10) {
+      test.skip();
+      console.log('\n⚠️  Skipping manual API test - VITE_GEMINI_API_KEY not configured');
+      console.log('This test requires a valid Gemini API key in CI environment');
+      console.log('Configure in GitHub Actions secrets: VITE_GEMINI_API_KEY\n');
+      return;
+    }
+
+    console.log('\n🚀 Starting manual real-world API test...');
+    console.log('✅ API key validated (length: ' + apiKey.length + ' chars)\n');
 
     // 1. Navigate to app
     console.log('📂 Step 1: Loading application...');
