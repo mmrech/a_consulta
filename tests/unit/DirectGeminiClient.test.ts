@@ -8,15 +8,14 @@
  * Tests all 7 AI functions with mocked GoogleGenAI responses
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { DirectGeminiClient } from '../../src/services/DirectGeminiClient';
 import type { PICOResult, ValidationResult, MetadataResult, TableResult } from '../../src/services/DirectGeminiClient';
 
 // Mock GoogleGenAI
-vi.mock('@google/genai', () => ({
-  GoogleGenAI: vi.fn().mockImplementation(() => ({
+jest.mock('@google/genai', () => ({
+  GoogleGenAI: jest.fn().mockImplementation(() => ({
     models: {
-      generateContent: vi.fn(),
+      generateContent: jest.fn(),
     },
   })),
   Type: {
@@ -29,22 +28,22 @@ vi.mock('@google/genai', () => ({
 }));
 
 // Mock error handler
-vi.mock('../../src/utils/aiErrorHandler', () => ({
-  categorizeAIError: vi.fn((error: any, context: string) => ({
+jest.mock('../../src/utils/aiErrorHandler', () => ({
+  categorizeAIError: jest.fn((error: any, context: string) => ({
     category: 'UNKNOWN',
     severity: 'HIGH',
     isRetryable: false,
     userMessage: error.message || 'An error occurred',
     technicalDetails: error.toString(),
   })),
-  isErrorRetryable: vi.fn(() => false),
-  logErrorWithContext: vi.fn(),
+  isErrorRetryable: jest.fn(() => false),
+  logErrorWithContext: jest.fn(),
 }));
 
 // Mock circuit breaker
-vi.mock('../../src/utils/CircuitBreaker', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    execute: vi.fn((fn) => fn()),
+jest.mock('../../src/utils/CircuitBreaker', () => ({
+  default: jest.fn().mockImplementation(() => ({
+    execute: jest.fn((fn) => fn()),
   })),
 }));
 
@@ -54,7 +53,7 @@ describe('DirectGeminiClient', () => {
 
   beforeEach(() => {
     // Clear all mocks
-    vi.clearAllMocks();
+    jest.clearAllMocks();
 
     // Create client
     client = new DirectGeminiClient('test-api-key');
@@ -366,8 +365,11 @@ describe('DirectGeminiClient', () => {
 
 describe('createDirectGeminiClient factory', () => {
   it('should create client with environment API key', async () => {
+    // Save original env
+    const originalEnv = process.env.VITE_GEMINI_API_KEY;
+
     // Mock environment variable
-    vi.stubEnv('VITE_GEMINI_API_KEY', 'test-env-key');
+    process.env.VITE_GEMINI_API_KEY = 'test-env-key';
 
     const { createDirectGeminiClient } = await import('../../src/services/DirectGeminiClient');
     const client = createDirectGeminiClient();
@@ -375,19 +377,32 @@ describe('createDirectGeminiClient factory', () => {
     expect(client).toBeDefined();
     expect(client).toBeInstanceOf(DirectGeminiClient);
 
-    vi.unstubAllEnvs();
+    // Restore original env
+    if (originalEnv) {
+      process.env.VITE_GEMINI_API_KEY = originalEnv;
+    } else {
+      delete process.env.VITE_GEMINI_API_KEY;
+    }
   });
 
   it('should throw error when API key is missing', async () => {
+    // Save original env vars
+    const originalGeminiKey = process.env.VITE_GEMINI_API_KEY;
+    const originalApiKey = process.env.VITE_API_KEY;
+    const originalGoogleKey = process.env.VITE_GOOGLE_API_KEY;
+
     // Clear environment variables
-    vi.stubEnv('VITE_GEMINI_API_KEY', '');
-    vi.stubEnv('VITE_API_KEY', '');
-    vi.stubEnv('VITE_GOOGLE_API_KEY', '');
+    delete process.env.VITE_GEMINI_API_KEY;
+    delete process.env.VITE_API_KEY;
+    delete process.env.VITE_GOOGLE_API_KEY;
 
     const { createDirectGeminiClient } = await import('../../src/services/DirectGeminiClient');
 
     expect(() => createDirectGeminiClient()).toThrow('Gemini API Key Not Configured');
 
-    vi.unstubAllEnvs();
+    // Restore original env vars
+    if (originalGeminiKey) process.env.VITE_GEMINI_API_KEY = originalGeminiKey;
+    if (originalApiKey) process.env.VITE_API_KEY = originalApiKey;
+    if (originalGoogleKey) process.env.VITE_GOOGLE_API_KEY = originalGoogleKey;
   });
 });

@@ -332,6 +332,7 @@ describe('AI Error Handling Tests', () => {
     describe('Backend Proxy Error Handling', () => {
         it('should handle 429 rate limit errors', async () => {
             (BackendProxyService.request as jest.Mock).mockRejectedValue(
+                // @ts-expect-error - Jest mock typing limitation
                 new Error('429 Rate limit exceeded')
             );
 
@@ -349,6 +350,7 @@ describe('AI Error Handling Tests', () => {
 
         it('should handle network timeout errors', async () => {
             (BackendProxyService.request as jest.Mock).mockRejectedValue(
+                // @ts-expect-error - Jest mock typing limitation
                 new Error('Request timeout after 60000ms')
             );
 
@@ -359,6 +361,7 @@ describe('AI Error Handling Tests', () => {
 
         it('should handle invalid API responses', async () => {
             (BackendProxyService.request as jest.Mock).mockRejectedValue(
+                // @ts-expect-error - Jest mock typing limitation
                 new Error('Invalid JSON response from backend')
             );
 
@@ -369,6 +372,7 @@ describe('AI Error Handling Tests', () => {
 
         it('should handle connection refused errors', async () => {
             (BackendProxyService.request as jest.Mock).mockRejectedValue(
+                // @ts-expect-error - Jest mock typing limitation
                 new Error('Network error: ECONNREFUSED')
             );
 
@@ -399,6 +403,7 @@ describe('AI Error Handling Tests', () => {
         it('should fallback to DirectGeminiClient on backend failure', async () => {
             // Simulate backend failure
             (BackendProxyService.request as jest.Mock).mockRejectedValue(
+                // @ts-expect-error - Jest mock typing limitation
                 new Error('503 Service Unavailable')
             );
 
@@ -494,6 +499,7 @@ describe('AI Error Handling Tests', () => {
     describe('Integration with Real AI Operations', () => {
         it('should handle PICO generation errors gracefully', async () => {
             (BackendProxyService.request as jest.Mock).mockRejectedValue(
+                // @ts-expect-error - Jest mock typing limitation
                 new Error('500 Internal Server Error')
             );
 
@@ -515,6 +521,7 @@ describe('AI Error Handling Tests', () => {
 
         it('should handle validation errors with context', async () => {
             (BackendProxyService.request as jest.Mock).mockRejectedValue(
+                // @ts-expect-error - Jest mock typing limitation
                 new Error('Invalid field value format')
             );
 
@@ -537,7 +544,9 @@ describe('AI Error Handling Tests', () => {
 
             const result = await mockValidation();
 
+            // @ts-expect-error - Test expects error handling path
             expect(result.is_supported).toBe(false);
+            // @ts-expect-error - Test expects error handling path
             expect(result.error).toBeDefined();
         });
     });

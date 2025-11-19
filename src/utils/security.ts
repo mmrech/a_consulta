@@ -3,8 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { Extraction, ValidationResult, ExtractionMethod } from '../types';
+import type { Extraction, ExtractionMethod } from '../types';
 import { EXTRACTION_METHODS } from '../types';
+
+/**
+ * Form validation result (different from AI ValidationResult)
+ */
+interface FormValidationResult {
+  valid: boolean;
+  message?: string;
+}
 
 /**
  * Security utilities for sanitizing inputs, validating data, and encoding/decoding
@@ -58,7 +66,7 @@ const SecurityUtils = {
    * @param input - The input element to validate
    * @returns Validation result with valid flag and optional message
    */
-  validateInput: (input: HTMLElement): ValidationResult => {
+  validateInput: (input: HTMLElement): FormValidationResult => {
     const validationType = (input as HTMLInputElement).dataset.validation;
     const value = (input as HTMLInputElement).value.trim();
 

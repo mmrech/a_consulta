@@ -34,7 +34,7 @@ import AppStateManager from '../state/AppStateManager';
 import ExtractionTracker from '../data/ExtractionTracker';
 import StatusManager from '../utils/status';
 import LRUCache from '../utils/LRUCache';
-import { formatErrorMessage } from '../utils/aiErrorHandler';
+import { formatErrorMessage, logErrorWithContext, categorizeAIError } from '../utils/aiErrorHandler';
 import { createDirectGeminiClient, DirectGeminiClient } from './DirectGeminiClient';
 
 // ==================== AI CLIENT INITIALIZATION ====================
@@ -421,48 +421,8 @@ async function handleExtractTables(): Promise<void> {
         const documentText = await getAllPdfText();
         if (!documentText) return;
 
-        const systemPrompt = `You are a data extraction specialist. Analyze the provided text from a clinical research paper. Identify all tables and extract their content. Structure the output as a JSON object. The object should have a single key 'tables' which is an array. Each object in the array should represent one table and have 'title' (the table's caption or title), 'description' (a brief summary of the table's content), and 'data' (a 2D array of strings representing rows and columns, including headers). If no tables are found, return an empty array for the 'tables' key.`;
-
-        const tableSchema = {
-            type: Type.OBJECT,
-            properties: {
-                tables: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            title: { type: Type.STRING },
-                            description: { type: Type.STRING },
-                            data: {
-                                type: Type.ARRAY,
-                                items: {
-                                    type: Type.ARRAY,
-                                    items: { type: Type.STRING }
-                                }
-                            }
-                        },
-                        required: ["title", "data"]
-                    }
-                }
-            }
-        };
-
-        const response = await aiCircuitBreaker.execute(async () => {
-            return await retryWithExponentialBackoff(async () => {
-                return await initializeAI().models.generateContent({
-                    model: 'gemini-2.5-pro',
-                    contents: documentText,
-                    config: {
-                        systemInstruction: systemPrompt,
-                        responseMimeType: "application/json",
-                        responseSchema: tableSchema
-                    }
-                });
-            }, 'Table extraction');
-        });
-
-        const jsonText = response.text;
-        const result = safeJsonParse(jsonText, 'Table extraction');
+        const client = initializeGeminiClient();
+        const result = await client.extractTables(documentText);
 
         if (result.tables && result.tables.length > 0 && resultsContainer) {
             renderTables(result.tables, resultsContainer);
@@ -563,26 +523,10 @@ async function handleImageAnalysis(): Promise<void> {
 
     try {
         const base64Data = await blobToBase64(file);
-        const imagePart = {
-            inlineData: {
-                mimeType: file.type,
-                data: base64Data,
-            },
-        };
-        const textPart = {
-            text: prompt
-        };
+        const client = initializeGeminiClient();
+        const analysis = await client.analyzeImage(base64Data, file.type, prompt);
 
-        const response = await aiCircuitBreaker.execute(async () => {
-            return await retryWithExponentialBackoff(async () => {
-                return await initializeAI().models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: { parts: [imagePart, textPart] },
-                });
-            }, 'Image analysis');
-        });
-
-        if (resultsContainer) resultsContainer.innerText = response.text;
+        if (resultsContainer) resultsContainer.innerText = analysis;
 
     } catch (error: any) {
         logErrorWithContext(error, 'Image analysis');
@@ -620,21 +564,10 @@ async function handleDeepAnalysis(): Promise<void> {
         const documentText = await getAllPdfText();
         if (!documentText) return;
 
-        const fullPrompt = `Based on the following document text, please answer this question: ${prompt}\n\nDOCUMENT TEXT:\n${documentText}`;
+        const client = initializeGeminiClient();
+        const analysis = await client.deepAnalysis(documentText, prompt);
 
-        const response = await aiCircuitBreaker.execute(async () => {
-            return await retryWithExponentialBackoff(async () => {
-                return await initializeAI().models.generateContent({
-                    model: 'gemini-2.5-pro',
-                    contents: fullPrompt,
-                    config: {
-                        thinkingConfig: { thinkingBudget: 32768 }
-                    }
-                });
-            }, 'Deep analysis');
-        });
-
-        if (resultsContainer) resultsContainer.innerText = response.text;
+        if (resultsContainer) resultsContainer.innerText = analysis;
 
     } catch (error: any) {
         logErrorWithContext(error, 'Deep analysis');
@@ -662,7 +595,6 @@ const AIService = {
     // Helper functions (exported for potential internal use)
     getPageText,
     getAllPdfText,
-    callGeminiWithSearch,
 };
 
 export default AIService;

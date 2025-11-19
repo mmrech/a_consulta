@@ -164,8 +164,8 @@ describe('Cache Integration Tests', () => {
 
             // Verify cache statistics
             const stats = PDFTextCache.getStats();
-            expect(stats.hits).toBe(1);
-            expect(stats.misses).toBe(1);
+            expect(stats.hitCount).toBe(1);
+            expect(stats.missCount).toBe(1);
             expect(stats.size).toBe(1);
         });
 
@@ -360,9 +360,9 @@ describe('Cache Integration Tests', () => {
 
             const stats = cache.getStats();
 
-            expect(stats.hits).toBe(3);
-            expect(stats.misses).toBe(2);
-            expect(stats.hitRate).toBeCloseTo(0.6, 1); // 60% hit rate
+            expect(stats.hitCount).toBe(3);
+            expect(stats.missCount).toBe(2);
+            expect(stats.hitRate).toBeCloseTo(60, 1); // 60% hit rate
         });
 
         it('should achieve 80%+ hit rate after warmup', () => {
@@ -406,7 +406,7 @@ describe('Cache Integration Tests', () => {
 
             const stats = cache.getStats();
             expect(stats.size).toBeLessThanOrEqual(10);
-            expect(stats.totalSize).toBeLessThanOrEqual(1024 * 100);
+            expect(stats.memoryUsage).toBeLessThanOrEqual(1024 * 100);
         });
 
         it('should evict entries when memory limit exceeded', () => {
@@ -493,7 +493,7 @@ describe('Cache Integration Tests', () => {
 
             const stats = cache.getStats();
             expect(stats.size).toBeGreaterThan(0);
-            expect(stats.hits + stats.misses).toBe(500); // 500 get operations
+            expect(stats.hitCount + stats.missCount).toBe(500); // 500 get operations
         });
     });
 });

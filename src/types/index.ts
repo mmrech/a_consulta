@@ -370,7 +370,7 @@ export interface ValidationResult {
 /**
  * Metadata extraction response from backend
  */
-export interface MetadataResult {
+export interface BackendMetadataResponse {
   doi?: string | null;
   pmid?: string | null;
   journal?: string | null;

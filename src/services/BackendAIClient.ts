@@ -329,22 +329,3 @@ export const BackendAIClient = {
 };
 
 export default BackendAIClient;
-
-// Export types for external use
-export type {
-    PICORequest,
-    PICOResponse,
-    SummaryRequest,
-    SummaryResponse,
-    ValidationRequest,
-    ValidationResponse,
-    MetadataRequest,
-    MetadataResponse,
-    TableExtractionRequest,
-    TableExtractionResponse,
-    ImageAnalysisRequest,
-    ImageAnalysisResponse,
-    DeepAnalysisRequest,
-    DeepAnalysisResponse,
-    TableData,
-};
