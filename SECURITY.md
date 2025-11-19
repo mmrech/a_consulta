@@ -137,6 +137,30 @@ When backend is enabled, authentication uses JWT tokens:
 - Use HTTPS for all backend requests
 - Implement token rotation (backend feature)
 
+### 5. Dependency Vulnerabilities
+
+**xlsx (SheetJS) Library:**
+The application uses `xlsx@0.18.5` for Excel export functionality. This version has known vulnerabilities:
+
+- **Prototype Pollution** (GHSA-4r6h-8v6p-xvw6) - High severity
+- **ReDoS** (GHSA-5pgg-2g8v-p4x9) - High severity
+
+**Risk Assessment:** ✅ **LOW** - Not exploitable in current use case
+
+**Mitigations:**
+
+- We only **GENERATE** Excel files (output-only), never **PARSE** user-uploaded files
+- All data comes from trusted form inputs
+- Vulnerabilities require malicious input files to exploit
+- Monitored weekly for security patches
+- See `DEPENDENCY_VULNERABILITIES.md` for detailed analysis
+
+**If Excel Import Added:**
+
+- Switch to `exceljs` library (no known vulnerabilities)
+- Implement input sanitization and validation
+- Run parsing in sandboxed Web Worker
+
 ## Security Audit History
 
 | Date       | Type            | Severity | Status  | Notes |

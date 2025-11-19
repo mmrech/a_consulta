@@ -1,6 +1,19 @@
 /**
  * ExportManager
  * Handles data export functionality (JSON, CSV, Excel, Audit Report, Annotated PDF)
+ *
+ * SECURITY NOTE: xlsx@0.18.5 has known vulnerabilities (Prototype Pollution, ReDoS)
+ * but they are NOT exploitable in our use case because:
+ * 1. We only GENERATE Excel files (output-only)
+ * 2. We never PARSE user-uploaded Excel files
+ * 3. All data comes from trusted form inputs
+ *
+ * If Excel IMPORT is added in the future, reevaluate and consider:
+ * - Switching to 'exceljs' library
+ * - Implementing input sanitization
+ * - Sandboxing file parsing in Web Worker
+ *
+ * See: DEPENDENCY_VULNERABILITIES.md
  */
 
 import * as XLSX from 'xlsx';
