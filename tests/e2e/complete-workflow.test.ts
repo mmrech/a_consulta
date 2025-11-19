@@ -281,7 +281,7 @@ describe('Complete User Workflow E2E Test', () => {
           fieldName: 'study_title',
           text: 'Character-Aware Neural Language Models',
           page: 1,
-          coordinates: { left: 100, top: 700, width: 200, height: 12 },
+          coordinates: { x: 100, y: 700, width: 200, height: 12 },
           method: 'manual' as const,
           documentName: 'Kim2016.pdf',
         },
