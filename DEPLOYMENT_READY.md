@@ -161,8 +161,10 @@ git remote show origin
 
 **Example format:**
 ```
-AIzaSyDTIPrQLPSMr35Ag53LdV37EUK4lbjvroI
+YOUR_GEMINI_API_KEY_HERE
 ```
+
+⚠️ **SECURITY:** Never commit your actual API key to git. Keep it in `.env.local` only.
 
 **⚠️ Important:**
 - No quotes around the key

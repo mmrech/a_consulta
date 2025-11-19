@@ -281,7 +281,8 @@ npm run preview
 
 2. **Configure GitHub Secret:**
    - Go to: Repository → Settings → Secrets and variables → Actions
-   - Add: `GEMINI_API_KEY` = `AIzaSyDTIPrQLPSMr35Ag53LdV37EUK4lbjvroI`
+   - Add: `GEMINI_API_KEY` = `YOUR_GEMINI_API_KEY_HERE`
+   - ⚠️ **SECURITY:** Never commit your actual API key to git
 
 3. **Verify CI/CD:**
    - Check Actions tab after push

@@ -88,9 +88,25 @@ npm run build
 
 ### Run Tests
 
+**Unit Tests:**
 ```bash
-npm test
+npm test          # Run all unit tests
+npm run test:watch     # Run tests in watch mode
+npm run test:coverage  # Generate coverage report
 ```
+
+**E2E Tests (Playwright):**
+```bash
+npm run test:e2e         # Run all E2E tests (headless)
+npm run test:e2e:headed  # Run with visible browser (debugging)
+npm run test:e2e:debug   # Step-through debugging mode
+```
+
+**⚠️ Important:** E2E AI tests (tests 23-35) require a valid `GEMINI_API_KEY` in `.env.local`:
+- Without the API key: **77/96 tests pass** (80.2% - all infrastructure tests)
+- With the API key: **96/96 tests pass** (100% - including AI integration tests)
+
+See [TESTING_GUIDE.md](TESTING_GUIDE.md) for comprehensive testing documentation.
 
 ### Lint Code
 

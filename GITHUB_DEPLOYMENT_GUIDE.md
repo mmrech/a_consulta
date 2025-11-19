@@ -170,7 +170,9 @@ After pushing, configure the `GEMINI_API_KEY` secret for GitHub Actions workflow
 
 **Value:** Your actual Gemini API key (from `.env.local`)
 
-**Example format:** `AIzaSyDTIPrQLPSMr35Ag53LdV37EUK4lbjvroI`
+**Example format:** `YOUR_GEMINI_API_KEY_HERE`
+
+⚠️ **SECURITY:** Never commit your actual API key to git. Keep it in `.env.local` only.
 
 **Steps:**
 1. Click **New repository secret**
