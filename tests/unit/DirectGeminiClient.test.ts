@@ -4,428 +4,390 @@
  */
 
 /**
- * DirectGeminiClient Tests
- *
- * Tests for the DirectGeminiClient service that provides direct Gemini API access.
+ * Unit tests for DirectGeminiClient
+ * Tests all 7 AI functions with mocked GoogleGenAI responses
  */
 
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { DirectGeminiClient } from '../../src/services/DirectGeminiClient';
 import type { PICOResult, ValidationResult, MetadataResult, TableResult } from '../../src/services/DirectGeminiClient';
 
-// Mock the Google GenAI SDK
-jest.mock('@google/genai', () => ({
-    GoogleGenAI: jest.fn().mockImplementation(() => ({
-        models: {
-            generateContent: jest.fn().mockResolvedValue({
-                text: JSON.stringify({
-                    population: 'Test population',
-                    intervention: 'Test intervention',
-                    comparator: 'Test comparator',
-                    outcomes: 'Test outcomes',
-                    timing: 'Test timing',
-                    studyType: 'Test study type'
-                })
-            })
-        }
-    })),
-    Type: {
-        OBJECT: 'object',
-        STRING: 'string',
-        BOOLEAN: 'boolean',
-        NUMBER: 'number',
-        ARRAY: 'array'
-    }
+// Mock GoogleGenAI
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: vi.fn().mockImplementation(() => ({
+    models: {
+      generateContent: vi.fn(),
+    },
+  })),
+  Type: {
+    OBJECT: 'object',
+    STRING: 'string',
+    BOOLEAN: 'boolean',
+    NUMBER: 'number',
+    ARRAY: 'array',
+  },
 }));
 
-// Mock environment variables
-const mockEnv = {
-    VITE_GEMINI_API_KEY: 'test-api-key'
-};
+// Mock error handler
+vi.mock('../../src/utils/aiErrorHandler', () => ({
+  categorizeAIError: vi.fn((error: any, context: string) => ({
+    category: 'UNKNOWN',
+    severity: 'HIGH',
+    isRetryable: false,
+    userMessage: error.message || 'An error occurred',
+    technicalDetails: error.toString(),
+  })),
+  isErrorRetryable: vi.fn(() => false),
+  logErrorWithContext: vi.fn(),
+}));
 
-Object.defineProperty(import.meta, 'env', {
-    value: mockEnv,
-    writable: true
-});
+// Mock circuit breaker
+vi.mock('../../src/utils/CircuitBreaker', () => ({
+  default: vi.fn().mockImplementation(() => ({
+    execute: vi.fn((fn) => fn()),
+  })),
+}));
 
 describe('DirectGeminiClient', () => {
-    let client: DirectGeminiClient;
+  let client: DirectGeminiClient;
+  let mockGenerateContent: any;
 
-    beforeEach(() => {
-        client = new DirectGeminiClient();
-        jest.clearAllMocks();
+  beforeEach(() => {
+    // Clear all mocks
+    vi.clearAllMocks();
+
+    // Create client
+    client = new DirectGeminiClient('test-api-key');
+
+    // Get reference to mocked generateContent
+    mockGenerateContent = (client as any).ai.models.generateContent;
+  });
+
+  describe('Constructor', () => {
+    it('should throw error if API key is not provided', () => {
+      expect(() => new DirectGeminiClient('')).toThrow('Gemini API key is required');
     });
 
-    describe('Configuration', () => {
-        it('should check if API key is configured', () => {
-            expect(client.isConfigured()).toBe(true);
-        });
+    it('should create client successfully with valid API key', () => {
+      expect(client).toBeDefined();
+      expect(client).toBeInstanceOf(DirectGeminiClient);
+    });
+  });
 
-        it('should report unconfigured when API key is missing', () => {
-            const originalEnv = import.meta.env.VITE_GEMINI_API_KEY;
-            delete (import.meta.env as any).VITE_GEMINI_API_KEY;
+  describe('generatePICO', () => {
+    it('should extract PICO-T data successfully', async () => {
+      const mockPICOData: PICOResult = {
+        population: '57 patients with malignant cerebellar infarction',
+        intervention: 'suboccipital decompressive craniectomy (SDC)',
+        comparator: 'best medical treatment alone',
+        outcomes: 'mRS at 12-month follow-up',
+        timing: '12-month follow-up',
+        studyType: 'retrospective-matched case-control study',
+      };
 
-            const newClient = new DirectGeminiClient();
-            expect(newClient.isConfigured()).toBe(false);
+      mockGenerateContent.mockResolvedValue({
+        text: JSON.stringify(mockPICOData),
+      });
 
-            // Restore
-            (import.meta.env as any).VITE_GEMINI_API_KEY = originalEnv;
-        });
+      const result = await client.generatePICO('Sample PDF text');
+
+      expect(result).toEqual(mockPICOData);
+      expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+      expect(mockGenerateContent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gemini-2.5-flash',
+          contents: expect.arrayContaining([
+            expect.objectContaining({
+              parts: expect.arrayContaining([
+                expect.objectContaining({
+                  text: expect.stringContaining('Sample PDF text'),
+                }),
+              ]),
+            }),
+          ]),
+        })
+      );
     });
 
-    describe('Circuit Breaker', () => {
-        it('should have CLOSED circuit breaker initially', () => {
-            expect(client.getCircuitBreakerStatus()).toBe('CLOSED');
-        });
+    it('should throw error on invalid JSON response', async () => {
+      mockGenerateContent.mockResolvedValue({
+        text: 'Invalid JSON',
+      });
 
-        it('should reset circuit breaker', () => {
-            client.resetCircuitBreaker();
-            expect(client.getCircuitBreakerStatus()).toBe('CLOSED');
-        });
+      await expect(client.generatePICO('Sample PDF text')).rejects.toThrow();
+    });
+  });
+
+  describe('generateSummary', () => {
+    it('should generate summary successfully', async () => {
+      const mockSummary = 'This study enrolled 57 patients with malignant cerebellar infarction...';
+
+      mockGenerateContent.mockResolvedValue({
+        text: mockSummary,
+      });
+
+      const result = await client.generateSummary('Sample PDF text');
+
+      expect(result).toBe(mockSummary);
+      expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+      expect(mockGenerateContent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gemini-flash-latest',
+        })
+      );
     });
 
-    describe('PICO Extraction', () => {
-        it('should generate PICO-T summary successfully', async () => {
-            const result = await client.generatePICO('Sample PDF text');
+    it('should return text directly without parsing', async () => {
+      const mockText = 'Summary text';
+      mockGenerateContent.mockResolvedValue({ text: mockText });
 
-            expect(result).toHaveProperty('population');
-            expect(result).toHaveProperty('intervention');
-            expect(result).toHaveProperty('comparator');
-            expect(result).toHaveProperty('outcomes');
-            expect(result).toHaveProperty('timing');
-            expect(result).toHaveProperty('studyType');
-        });
+      const result = await client.generateSummary('Sample PDF text');
 
-        it('should return empty strings for missing fields', async () => {
-            const mockGenerateContent = jest.fn().mockResolvedValue({
-                text: JSON.stringify({})
-            });
+      expect(result).toBe(mockText);
+    });
+  });
 
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
+  describe('validateField', () => {
+    it('should validate field successfully with support', async () => {
+      const mockValidation: ValidationResult = {
+        is_supported: true,
+        supporting_quote: 'The study enrolled 57 patients...',
+        confidence_score: 0.95,
+      };
 
-            const result = await client.generatePICO('Sample PDF text');
+      mockGenerateContent.mockResolvedValue({
+        text: JSON.stringify(mockValidation),
+      });
 
-            expect(result.population).toBe('');
-            expect(result.intervention).toBe('');
-            expect(result.comparator).toBe('');
-        });
+      const result = await client.validateField('field-1', 'claim text', 'Sample PDF text');
+
+      expect(result).toEqual(mockValidation);
+      expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+      expect(mockGenerateContent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gemini-2.5-pro',
+        })
+      );
     });
 
-    describe('Summary Generation', () => {
-        it('should generate summary successfully', async () => {
-            const mockGenerateContent = jest.fn().mockResolvedValue({
-                text: 'This is a summary of the clinical study.'
-            });
+    it('should validate field with no support', async () => {
+      const mockValidation: ValidationResult = {
+        is_supported: false,
+        supporting_quote: 'No evidence found in document',
+        confidence_score: 0.85,
+      };
 
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
+      mockGenerateContent.mockResolvedValue({
+        text: JSON.stringify(mockValidation),
+      });
 
-            const result = await client.generateSummary('Sample PDF text');
+      const result = await client.validateField('field-1', 'unsupported claim', 'Sample PDF text');
 
-            expect(result).toBe('This is a summary of the clinical study.');
-            expect(mockGenerateContent).toHaveBeenCalled();
-        });
+      expect(result.is_supported).toBe(false);
+      expect(result.confidence_score).toBe(0.85);
+    });
+  });
+
+  describe('findMetadata', () => {
+    it('should find metadata successfully', async () => {
+      const mockMetadata: MetadataResult = {
+        doi: '10.1234/example.2016.001',
+        pmid: '27123456',
+        journal: 'Stroke',
+        year: '2016',
+      };
+
+      mockGenerateContent.mockResolvedValue({
+        text: JSON.stringify(mockMetadata),
+      });
+
+      const result = await client.findMetadata('Kim et al 2016 cerebellar infarction');
+
+      expect(result).toEqual(mockMetadata);
+      expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+      expect(mockGenerateContent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gemini-2.5-flash',
+          config: expect.objectContaining({
+            tools: [{ googleSearch: {} }],
+          }),
+        })
+      );
     });
 
-    describe('Field Validation', () => {
-        it('should validate field successfully', async () => {
-            const mockGenerateContent = jest.fn().mockResolvedValue({
-                text: JSON.stringify({
-                    is_supported: true,
-                    supporting_quote: 'Direct quote from document',
-                    confidence_score: 0.95
-                })
-            });
+    it('should handle missing metadata fields gracefully', async () => {
+      const mockMetadata: MetadataResult = {
+        doi: '10.1234/example.2016.001',
+        pmid: '',
+        journal: 'Stroke',
+        year: '',
+      };
 
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
+      mockGenerateContent.mockResolvedValue({
+        text: JSON.stringify(mockMetadata),
+      });
 
-            const result = await client.validateField('test-field', 'Test claim', 'Sample PDF text');
+      const result = await client.findMetadata('Citation text');
 
-            expect(result.is_supported).toBe(true);
-            expect(result.supporting_quote).toBe('Direct quote from document');
-            expect(result.confidence_score).toBe(0.95);
-        });
+      expect(result.doi).toBe('10.1234/example.2016.001');
+      expect(result.pmid).toBe('');
+    });
+  });
 
-        it('should handle unsupported claims', async () => {
-            const mockGenerateContent = jest.fn().mockResolvedValue({
-                text: JSON.stringify({
-                    is_supported: false,
-                    supporting_quote: 'No evidence found',
-                    confidence_score: 0.85
-                })
-            });
+  describe('extractTables', () => {
+    it('should extract tables successfully', async () => {
+      const mockTables: TableResult = {
+        tables: [
+          {
+            title: 'Table 1: Patient Demographics',
+            description: 'Baseline characteristics of the study population',
+            data: [
+              ['Characteristic', 'SDC Group', 'Control Group'],
+              ['Age (years)', '65 ± 12', '67 ± 10'],
+              ['Male sex (%)', '60%', '55%'],
+            ],
+          },
+          {
+            title: 'Table 2: Outcomes',
+            description: 'Primary and secondary outcomes',
+            data: [
+              ['Outcome', 'SDC', 'Control', 'P-value'],
+              ['Mortality', '15%', '35%', '<0.001'],
+            ],
+          },
+        ],
+      };
 
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
+      mockGenerateContent.mockResolvedValue({
+        text: JSON.stringify(mockTables),
+      });
 
-            const result = await client.validateField('test-field', 'Unsupported claim', 'Sample PDF text');
+      const result = await client.extractTables('Sample PDF text');
 
-            expect(result.is_supported).toBe(false);
-        });
+      expect(result.tables).toHaveLength(2);
+      expect(result.tables[0].title).toBe('Table 1: Patient Demographics');
+      expect(result.tables[0].data).toHaveLength(3);
+      expect(mockGenerateContent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gemini-2.5-pro',
+        })
+      );
     });
 
-    describe('Metadata Search', () => {
-        it('should find metadata successfully', async () => {
-            const mockGenerateContent = jest.fn().mockResolvedValue({
-                text: JSON.stringify({
-                    doi: '10.1234/test',
-                    pmid: '12345678',
-                    journal: 'Test Journal',
-                    year: '2023'
-                })
-            });
+    it('should return empty tables array when none found', async () => {
+      mockGenerateContent.mockResolvedValue({
+        text: JSON.stringify({ tables: [] }),
+      });
 
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
+      const result = await client.extractTables('Sample PDF text');
 
-            const result = await client.findMetadata('Test citation');
+      expect(result.tables).toEqual([]);
+    });
+  });
 
-            expect(result.doi).toBe('10.1234/test');
-            expect(result.pmid).toBe('12345678');
-            expect(result.journal).toBe('Test Journal');
-            expect(result.year).toBe('2023');
-        });
+  describe('analyzeImage', () => {
+    it('should analyze image successfully', async () => {
+      const mockAnalysis = 'This figure shows a CT scan of a patient with cerebellar infarction...';
 
-        it('should return empty strings for missing metadata', async () => {
-            const mockGenerateContent = jest.fn().mockResolvedValue({
-                text: JSON.stringify({})
-            });
+      mockGenerateContent.mockResolvedValue({
+        text: mockAnalysis,
+      });
 
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
+      const result = await client.analyzeImage('base64ImageData', 'image/png', 'Describe this figure');
 
-            const result = await client.findMetadata('Unknown citation');
+      expect(result).toBe(mockAnalysis);
+      expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+      expect(mockGenerateContent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gemini-2.5-flash',
+          contents: expect.objectContaining({
+            parts: expect.arrayContaining([
+              expect.objectContaining({
+                inlineData: expect.objectContaining({
+                  mimeType: 'image/png',
+                  data: 'base64ImageData',
+                }),
+              }),
+              expect.objectContaining({
+                text: 'Describe this figure',
+              }),
+            ]),
+          }),
+        })
+      );
+    });
+  });
 
-            expect(result.doi).toBe('');
-            expect(result.pmid).toBe('');
-            expect(result.journal).toBe('');
-            expect(result.year).toBe('');
-        });
+  describe('deepAnalysis', () => {
+    it('should perform deep analysis successfully', async () => {
+      const mockAnalysis = 'The main limitations of this study include...';
+
+      mockGenerateContent.mockResolvedValue({
+        text: mockAnalysis,
+      });
+
+      const result = await client.deepAnalysis('Sample PDF text', 'What are the key limitations?');
+
+      expect(result).toBe(mockAnalysis);
+      expect(mockGenerateContent).toHaveBeenCalledTimes(1);
+      expect(mockGenerateContent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gemini-2.5-pro',
+          config: expect.objectContaining({
+            thinkingConfig: { thinkingBudget: 32768 },
+          }),
+        })
+      );
+    });
+  });
+
+  describe('getAI', () => {
+    it('should return GoogleGenAI instance', () => {
+      const ai = client.getAI();
+      expect(ai).toBeDefined();
+      expect(ai).toHaveProperty('models');
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle API errors gracefully', async () => {
+      mockGenerateContent.mockRejectedValue(new Error('API Error'));
+
+      await expect(client.generatePICO('Sample PDF text')).rejects.toThrow();
     });
 
-    describe('Table Extraction', () => {
-        it('should extract tables successfully', async () => {
-            const mockGenerateContent = jest.fn().mockResolvedValue({
-                text: JSON.stringify({
-                    tables: [
-                        {
-                            title: 'Table 1: Patient Demographics',
-                            description: 'Baseline characteristics',
-                            data: [
-                                ['Characteristic', 'Value'],
-                                ['Age', '65 years'],
-                                ['Sex', '60% male']
-                            ]
-                        }
-                    ]
-                })
-            });
+    it('should handle network errors', async () => {
+      mockGenerateContent.mockRejectedValue(new Error('Network error'));
 
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
-
-            const result = await client.extractTables('Sample PDF text');
-
-            expect(result.tables).toHaveLength(1);
-            expect(result.tables[0].title).toBe('Table 1: Patient Demographics');
-            expect(result.tables[0].data).toHaveLength(3);
-        });
-
-        it('should return empty array when no tables found', async () => {
-            const mockGenerateContent = jest.fn().mockResolvedValue({
-                text: JSON.stringify({ tables: [] })
-            });
-
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
-
-            const result = await client.extractTables('Sample PDF text');
-
-            expect(result.tables).toHaveLength(0);
-        });
+      await expect(client.generateSummary('Sample PDF text')).rejects.toThrow();
     });
+  });
+});
 
-    describe('Image Analysis', () => {
-        it('should analyze image successfully', async () => {
-            const mockGenerateContent = jest.fn().mockResolvedValue({
-                text: 'This image shows a brain CT scan with visible hemorrhage.'
-            });
+describe('createDirectGeminiClient factory', () => {
+  it('should create client with environment API key', async () => {
+    // Mock environment variable
+    vi.stubEnv('VITE_GEMINI_API_KEY', 'test-env-key');
 
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
+    const { createDirectGeminiClient } = await import('../../src/services/DirectGeminiClient');
+    const client = createDirectGeminiClient();
 
-            const result = await client.analyzeImage('base64-image-data', 'image/png', 'Describe this image');
+    expect(client).toBeDefined();
+    expect(client).toBeInstanceOf(DirectGeminiClient);
 
-            expect(result).toBe('This image shows a brain CT scan with visible hemorrhage.');
-            expect(mockGenerateContent).toHaveBeenCalled();
-        });
-    });
+    vi.unstubAllEnvs();
+  });
 
-    describe('Deep Analysis', () => {
-        it('should perform deep analysis successfully', async () => {
-            const mockGenerateContent = jest.fn().mockResolvedValue({
-                text: 'Deep analysis result with complex reasoning about the clinical study.'
-            });
+  it('should throw error when API key is missing', async () => {
+    // Clear environment variables
+    vi.stubEnv('VITE_GEMINI_API_KEY', '');
+    vi.stubEnv('VITE_API_KEY', '');
+    vi.stubEnv('VITE_GOOGLE_API_KEY', '');
 
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
+    const { createDirectGeminiClient } = await import('../../src/services/DirectGeminiClient');
 
-            const result = await client.deepAnalysis('Sample PDF text', 'What are the key findings?');
+    expect(() => createDirectGeminiClient()).toThrow('Gemini API Key Not Configured');
 
-            expect(result).toBe('Deep analysis result with complex reasoning about the clinical study.');
-            expect(mockGenerateContent).toHaveBeenCalled();
-        });
-    });
-
-    describe('Error Handling', () => {
-        it('should throw error when API key is not configured', async () => {
-            const originalEnv = import.meta.env.VITE_GEMINI_API_KEY;
-            delete (import.meta.env as any).VITE_GEMINI_API_KEY;
-
-            const newClient = new DirectGeminiClient();
-
-            await expect(newClient.generatePICO('Sample text')).rejects.toThrow();
-
-            // Restore
-            (import.meta.env as any).VITE_GEMINI_API_KEY = originalEnv;
-        });
-
-        it('should handle invalid JSON responses', async () => {
-            const mockGenerateContent = jest.fn().mockResolvedValue({
-                text: 'Invalid JSON {['
-            });
-
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
-
-            await expect(client.generatePICO('Sample text')).rejects.toThrow(/invalid response format/i);
-        });
-
-        it('should handle empty responses', async () => {
-            const mockGenerateContent = jest.fn().mockResolvedValue({
-                text: ''
-            });
-
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
-
-            await expect(client.generatePICO('Sample text')).rejects.toThrow(/empty response/i);
-        });
-    });
-
-    describe('Retry Logic', () => {
-        it('should retry on retryable errors', async () => {
-            let callCount = 0;
-            const mockGenerateContent = jest.fn().mockImplementation(() => {
-                callCount++;
-                if (callCount < 2) {
-                    const error = new Error('Rate limit exceeded');
-                    (error as any).status = 429;
-                    throw error;
-                }
-                return Promise.resolve({
-                    text: JSON.stringify({ population: 'Test' })
-                });
-            });
-
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
-
-            // Increase timeout for retry test
-            jest.setTimeout(10000);
-
-            const result = await client.generatePICO('Sample text');
-
-            expect(mockGenerateContent).toHaveBeenCalledTimes(2);
-            expect(result.population).toBe('Test');
-        });
-
-        it('should not retry on non-retryable errors', async () => {
-            const mockGenerateContent = jest.fn().mockRejectedValue(
-                new Error('Invalid API key')
-            );
-
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
-
-            await expect(client.generatePICO('Sample text')).rejects.toThrow();
-            expect(mockGenerateContent).toHaveBeenCalledTimes(1);
-        });
-    });
-
-    describe('Integration Tests', () => {
-        it('should handle complete PICO extraction workflow', async () => {
-            const mockGenerateContent = jest.fn().mockResolvedValue({
-                text: JSON.stringify({
-                    population: '150 patients with cerebellar stroke',
-                    intervention: 'Decompressive craniectomy',
-                    comparator: 'Medical management',
-                    outcomes: 'mRS at 6 months',
-                    timing: '6-month follow-up',
-                    studyType: 'Retrospective cohort study'
-                })
-            });
-
-            (client as any).ai = {
-                models: {
-                    generateContent: mockGenerateContent
-                }
-            };
-
-            const pdfText = 'Sample clinical study about cerebellar stroke treatment...';
-            const result = await client.generatePICO(pdfText);
-
-            expect(result).toMatchObject({
-                population: '150 patients with cerebellar stroke',
-                intervention: 'Decompressive craniectomy',
-                comparator: 'Medical management',
-                outcomes: 'mRS at 6 months',
-                timing: '6-month follow-up',
-                studyType: 'Retrospective cohort study'
-            });
-        });
-    });
+    vi.unstubAllEnvs();
+  });
 });

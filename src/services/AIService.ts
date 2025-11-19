@@ -5,69 +5,44 @@
 
 /**
  * AIService
- * Handles all AI integration functions for the Clinical Extractor
- *
- * 🔒 SECURE BACKEND ARCHITECTURE (Phase 2 - Nov 2025)
- * ================================================
- * All AI functions now proxy through secure backend API by default.
- * API keys are never exposed to frontend.
+ * Handles all Gemini AI integration functions for the Clinical Extractor
  *
  * Includes 7 AI-powered functions:
- * 1. generatePICO() - Extract PICO-T summary
- * 2. generateSummary() - Generate key findings summary
- * 3. validateFieldWithAI() - Validate field content
- * 4. findMetadata() - Search for study metadata
- * 5. handleExtractTables() - Extract tables from document
- * 6. handleImageAnalysis() - Analyze uploaded images
- * 7. handleDeepAnalysis() - Deep document analysis
+ * 1. generatePICO() - Extract PICO-T summary (gemini-2.5-flash)
+ * 2. generateSummary() - Generate key findings summary (gemini-flash-latest)
+ * 3. validateFieldWithAI() - Validate field content (gemini-2.5-pro)
+ * 4. findMetadata() - Search for study metadata (gemini-2.5-flash + Google Search)
+ * 5. handleExtractTables() - Extract tables from document (gemini-2.5-pro)
+ * 6. handleImageAnalysis() - Analyze uploaded images (gemini-2.5-flash)
+ * 7. handleDeepAnalysis() - Deep document analysis (gemini-2.5-pro + thinking)
  *
- * Architecture:
- * Frontend (AIService) → Backend (/api/ai/*) → Gemini API
+ * ⚠️ SECURITY WARNING:
+ * This implementation loads the Gemini API key from environment variables, which
+ * exposes it in the frontend JavaScript bundle. This is acceptable for:
+ * - Development and testing environments
+ * - Personal projects and demos
+ * - Applications with domain restrictions on the API key
  *
- * Fallback mode:
- * If backend unavailable, falls back to direct Gemini calls (requires VITE_GEMINI_API_KEY)
- * This fallback is for development/testing only - NOT recommended for production.
+ * For production deployments:
+ * - Use a backend proxy or serverless functions to protect the API key
+ * - Implement rate limiting and request authentication
+ * - Monitor API usage for abuse
+ * - Consider using Firebase App Check or similar attestation
  */
 
-import BackendAIClient from './BackendAIClient';
-import BackendHealthMonitor from './BackendHealthMonitor';
-import { GoogleGenAI, Type } from "@google/genai";
 import AppStateManager from '../state/AppStateManager';
 import ExtractionTracker from '../data/ExtractionTracker';
 import StatusManager from '../utils/status';
 import LRUCache from '../utils/LRUCache';
-import CircuitBreaker from '../utils/CircuitBreaker';
-import { categorizeAIError, isErrorRetryable, formatErrorMessage, logErrorWithContext } from '../utils/aiErrorHandler';
+import { formatErrorMessage } from '../utils/aiErrorHandler';
+import { createDirectGeminiClient, DirectGeminiClient } from './DirectGeminiClient';
 
 // ==================== AI CLIENT INITIALIZATION ====================
 
 /**
- * Get Gemini API Key from Vite environment variables (FALLBACK ONLY)
- *
- * ⚠️ IMPORTANT: This is only used as a FALLBACK when backend is unavailable.
- * In production, ALL AI calls should go through the backend API.
- *
- * Supports multiple environment variable names for backward compatibility:
- * - VITE_GEMINI_API_KEY (preferred)
- * - VITE_API_KEY (alternative)
- * - VITE_GOOGLE_API_KEY (alternative)
- *
- * 🔒 SECURITY STATUS: MITIGATED (Phase 2 Complete - Nov 2025)
- * =============================================================
- * ✅ PRIMARY PATH: Backend proxy (API key server-side only)
- * ⚠️ FALLBACK PATH: Direct Gemini (for development/testing only)
- *
- * See BACKEND_MIGRATION_PLAN.md for architecture details.
+ * Lazy-initialized DirectGeminiClient instance
  */
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY ||
-                import.meta.env.VITE_API_KEY ||
-                import.meta.env.VITE_GOOGLE_API_KEY;
-
-/**
- * Lazy-initialized AI client instance (FALLBACK ONLY)
- * Used only when backend is unavailable
- */
-let ai: GoogleGenAI | null = null;
+let geminiClient: DirectGeminiClient | null = null;
 
 /**
  * LRU Cache for PDF text with 50-page limit
@@ -75,50 +50,18 @@ let ai: GoogleGenAI | null = null;
 const pdfTextLRUCache = new LRUCache<number, { fullText: string, items: Array<any> }>(50);
 
 /**
- * Circuit Breaker for AI service resilience
+ * Initialize DirectGeminiClient with user-friendly error handling
  */
-const aiCircuitBreaker = new CircuitBreaker({
-    failureThreshold: 5,
-    successThreshold: 2,
-    timeout: 60000,
-});
+function initializeGeminiClient(): DirectGeminiClient {
+    if (geminiClient) return geminiClient;
 
-/**
- * Check if we should use backend (primary path) or fallback to direct Gemini
- * @returns {Promise<boolean>} True if backend is available and should be used
- */
-async function shouldUseBackend(): Promise<boolean> {
-    const status = await BackendHealthMonitor.checkHealth();
-    return status.mode === 'backend';
-}
-
-/**
- * Initialize Google Generative AI client with user-friendly error handling
- * (FALLBACK ONLY - used when backend is unavailable)
- */
-function initializeAI(): GoogleGenAI {
-    if (ai) return ai;
-
-    if (!API_KEY) {
-        const errorMsg = `⚠️ Gemini API Key Not Configured
-
-RECOMMENDED: Use backend API (no frontend API key needed)
-- Set VITE_BACKEND_URL in .env.local
-- Ensure backend is running
-
-FALLBACK: Direct Gemini API (development only)
-- Create .env.local file in project root
-- Add: VITE_GEMINI_API_KEY=your_api_key_here
-- Get key at: https://ai.google.dev/
-
-⚠️ Backend unavailable and no fallback API key configured.`;
-        StatusManager.show(errorMsg, 'error', 30000);
-        throw new Error('Backend unavailable and Gemini API key not configured');
+    try {
+        geminiClient = createDirectGeminiClient();
+        return geminiClient;
+    } catch (error: any) {
+        StatusManager.show(error.message, 'error', 30000);
+        throw error;
     }
-
-    console.warn('⚠️ Using direct Gemini API (fallback mode). Backend should be used in production.');
-    ai = new GoogleGenAI({ apiKey: API_KEY });
-    return ai;
 }
 
 // ==================== HELPER FUNCTIONS ====================
@@ -215,30 +158,6 @@ async function getAllPdfText(): Promise<string | null> {
 }
 
 /**
- * Calls the Gemini API with Google Search grounding.
- * Includes retry logic with exponential backoff for rate limits.
- * @param {string} systemInstruction - The system instruction.
- * @param {string} userPrompt - The user query.
- * @param {object} responseSchema - The JSON schema for the response.
- * @returns {Promise<string>} - The text content from the API response.
- */
-async function callGeminiWithSearch(systemInstruction: string, userPrompt: string, responseSchema: any): Promise<string> {
-    return await retryWithExponentialBackoff(async () => {
-        const response = await initializeAI().models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: [{ parts: [{ text: userPrompt }] }],
-            config: {
-                systemInstruction,
-                tools: [{googleSearch: {}}],
-                responseMimeType: "application/json",
-                responseSchema
-            }
-        });
-        return response.text;
-    }, 'Gemini Search API call');
-}
-
-/**
  * Converts a Blob to base64 string
  * @param {Blob} blob - The blob to convert
  * @returns {Promise<string>} - Base64 encoded string
@@ -254,352 +173,11 @@ function blobToBase64(blob: Blob): Promise<string> {
     });
 }
 
-// ==================== RETRY LOGIC WITH EXPONENTIAL BACKOFF ====================
-
-/**
- * Retry configuration for API calls
- */
-const RETRY_CONFIG = {
-    maxAttempts: 3,
-    delays: [2000, 4000, 8000], // 2s, 4s, 8s
-    retryableStatusCodes: [429, 500, 502, 503, 504]
-};
-
-/**
- * Checks if an error is retryable (429, 5xx errors, network errors)
- * Now uses the centralized error categorization system
- * @param error - The error to check
- * @returns True if the error should trigger a retry
- */
-function isRetryableError(error: any): boolean {
-    // Use centralized error handler for consistent retry logic
-    return isErrorRetryable(error);
-}
-
-/**
- * Delays execution for a specified number of milliseconds
- * @param ms - Milliseconds to delay
- */
-function delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
- * Safely parses JSON with comprehensive error handling
- * @param jsonText - JSON string to parse
- * @param context - Context for error messaging
- * @returns Parsed object
- * @throws Error with user-friendly message if parsing fails
- */
-function safeJsonParse(jsonText: string, context: string = 'AI response'): any {
-    try {
-        if (!jsonText || !jsonText.trim()) {
-            throw new Error('AI returned empty response');
-        }
-
-        return JSON.parse(jsonText);
-    } catch (parseError) {
-        console.error(`Failed to parse ${context}:`, jsonText);
-        logErrorWithContext(parseError, `JSON Parse - ${context}`, { rawResponse: jsonText });
-
-        throw new Error(
-            `AI returned invalid response format. This may indicate the document is too complex or the AI service is degraded. ` +
-            `Please try again or contact support if the issue persists.`
-        );
-    }
-}
-
-/**
- * Wraps an async function with exponential backoff retry logic
- * Retries on 429 (rate limit) and 5xx server errors
- * 
- * @param fn - Async function to retry
- * @param context - Description of the operation for user feedback
- * @returns Promise that resolves with the function result
- */
-async function retryWithExponentialBackoff<T>(
-    fn: () => Promise<T>,
-    context: string = 'API call'
-): Promise<T> {
-    let lastError: any;
-    
-    for (let attempt = 0; attempt < RETRY_CONFIG.maxAttempts; attempt++) {
-        try {
-            return await fn();
-        } catch (error: any) {
-            lastError = error;
-            
-            const isLastAttempt = attempt === RETRY_CONFIG.maxAttempts - 1;
-            
-            if (!isRetryableError(error)) {
-                throw error;
-            }
-            
-            if (isLastAttempt) {
-                console.error(`${context} failed after ${RETRY_CONFIG.maxAttempts} attempts`);
-                throw error;
-            }
-            
-            const delayMs = RETRY_CONFIG.delays[attempt];
-            const delaySec = delayMs / 1000;
-            
-            console.warn(`${context} failed (attempt ${attempt + 1}/${RETRY_CONFIG.maxAttempts}). Retrying in ${delaySec}s...`);
-            console.warn('Error:', error.message || error);
-            
-            StatusManager.show(
-                `AI service is busy, retrying in ${delaySec} seconds... (attempt ${attempt + 1}/${RETRY_CONFIG.maxAttempts})`,
-                'warning',
-                delayMs
-            );
-            
-            await delay(delayMs);
-        }
-    }
-    
-    throw lastError;
-}
-
-// ==================== FALLBACK FUNCTIONS (Direct Gemini) ====================
-// These are used only when backend is unavailable
-
-/**
- * Generate PICO-T using direct Gemini API (FALLBACK ONLY)
- */
-async function generatePICOFallback(documentText: string): Promise<any> {
-    const systemPrompt = "You are an expert clinical research assistant specializing in systematic reviews. Your task is to extract PICO-TT (Population, Intervention, Comparator, Outcomes, Timing, and sTudy Type) information from the provided clinical study text using the PICO-TT framework methodology. This framework is essential for systematic review quality and research reproducibility. Return the information as a JSON object. Be concise and accurate. If information is not found, return an empty string for that field.";
-    const userPrompt = `Here is the clinical study text:\n\n${documentText}`;
-
-    const picoSchema = {
-        type: Type.OBJECT,
-        properties: {
-            "population": { "type": Type.STRING, "description": "The study population (e.g., '57 patients with malignant cerebellar infarction')" },
-            "intervention": { "type": Type.STRING, "description": "The intervention performed (e.g., 'suboccipital decompressive craniectomy (SDC)')" },
-            "comparator": { "type": Type.STRING, "description": "The comparison group (e.g., 'best medical treatment alone' or 'no comparator')" },
-            "outcomes": { "type": Type.STRING, "description": "The primary outcomes measured (e.g., 'mRS at 12-month follow-up')" },
-            "timing": { "type": Type.STRING, "description": "The follow-up timing (e.g., '12-month follow-up')" },
-            "studyType": { "type": Type.STRING, "description": "The type of study (e.g., 'retrospective-matched case-control study')" }
-        }
-    };
-
-    const response = await aiCircuitBreaker.execute(async () => {
-        return await retryWithExponentialBackoff(async () => {
-            return await initializeAI().models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: [{ parts: [{ text: userPrompt }] }],
-                config: {
-                    systemInstruction: systemPrompt,
-                    responseMimeType: "application/json",
-                    responseSchema: picoSchema
-                }
-            });
-        }, 'PICO-T extraction (fallback)');
-    });
-
-    const jsonText = response.text;
-    return safeJsonParse(jsonText, 'PICO-T extraction (fallback)');
-}
-
-/**
- * Fallback: Generate summary using direct Gemini API
- */
-async function generateSummaryFallback(documentText: string): Promise<string> {
-    const systemPrompt = "You are an expert clinical research assistant. Your task is to read the provided clinical study text and write a concise summary (2-3 paragraphs) focusing on the key findings, outcomes, and any identified predictors of those outcomes.";
-    const userPrompt = `Please summarize the following clinical study text:\n\n${documentText}`;
-
-    const response = await aiCircuitBreaker.execute(async () => {
-        return await retryWithExponentialBackoff(async () => {
-            return await initializeAI().models.generateContent({
-                model: 'gemini-flash-latest',
-                contents: [{ parts: [{ text: userPrompt }] }],
-                config: {
-                    systemInstruction: systemPrompt,
-                }
-            });
-        }, 'Summary generation (fallback)');
-    });
-
-    return response.text;
-}
-
-/**
- * Fallback: Validate field using direct Gemini API
- */
-async function validateFieldFallback(fieldId: string, fieldValue: string, documentText: string): Promise<any> {
-    const systemPrompt = `You are a critical fact-checker for clinical research data extraction. Your task is to verify whether the provided extracted field value can be supported by evidence from the clinical study text. Be strict and thorough in your analysis.
-
-Return a JSON object with exactly these fields:
-- is_supported: true if the value is supported by the text, false otherwise
-- quote: the exact text from the study that supports (or contradicts) the value. Use "..." for brevity if needed.
-- confidence: a number between 0.0 and 1.0 representing your confidence in this assessment`;
-
-    const userPrompt = `Field ID: ${fieldId}
-Field Value: ${fieldValue}
-
-Clinical Study Text:
-${documentText}
-
-Verify if the field value is supported by the text.`;
-
-    const validationSchema = {
-        type: Type.OBJECT,
-        properties: {
-            "is_supported": { "type": Type.BOOLEAN, "description": "True if the value is supported by the text" },
-            "quote": { "type": Type.STRING, "description": "Exact quote from the text supporting (or contradicting) the value" },
-            "confidence": { "type": Type.NUMBER, "description": "Confidence level (0.0-1.0)" }
-        }
-    };
-
-    const response = await aiCircuitBreaker.execute(async () => {
-        return await retryWithExponentialBackoff(async () => {
-            return await initializeAI().models.generateContent({
-                model: 'gemini-2.5-pro',
-                contents: [{ parts: [{ text: userPrompt }] }],
-                config: {
-                    systemInstruction: systemPrompt,
-                    responseMimeType: "application/json",
-                    responseSchema: validationSchema
-                }
-            });
-        }, 'Field validation (fallback)');
-    });
-
-    const jsonText = response.text;
-    return safeJsonParse(jsonText, 'Field validation (fallback)');
-}
-
-/**
- * Fallback: Find metadata using direct Gemini API with Google Search
- */
-async function findMetadataFallback(documentText: string): Promise<any> {
-    const systemPrompt = `You are a research metadata specialist. Extract bibliographic metadata from the clinical study text. Use Google Search grounding when needed to find DOI, PMID, journal information, and publication year. Return a JSON object with these fields (use null if not found): doi, pmid, journal, year`;
-    const userPrompt = `Extract metadata from this clinical study:\n\n${documentText}`;
-
-    const metadataSchema = {
-        type: Type.OBJECT,
-        properties: {
-            "doi": { "type": Type.STRING, "description": "DOI identifier (e.g., '10.1161/STROKEAHA.120.033206')", "nullable": true },
-            "pmid": { "type": Type.STRING, "description": "PubMed ID (e.g., '33722112')", "nullable": true },
-            "journal": { "type": Type.STRING, "description": "Journal name (e.g., 'Stroke')", "nullable": true },
-            "year": { "type": Type.NUMBER, "description": "Publication year (e.g., 2021)", "nullable": true }
-        }
-    };
-
-    const response = await aiCircuitBreaker.execute(async () => {
-        return await retryWithExponentialBackoff(async () => {
-            return await initializeAI().models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: [{ parts: [{ text: userPrompt }] }],
-                config: {
-                    systemInstruction: systemPrompt,
-                    responseMimeType: "application/json",
-                    responseSchema: metadataSchema
-                }
-            });
-        }, 'Metadata extraction (fallback)');
-    });
-
-    const jsonText = response.text;
-    return safeJsonParse(jsonText, 'Metadata extraction (fallback)');
-}
-
-/**
- * Fallback: Extract tables using direct Gemini API
- */
-async function extractTablesFallback(documentText: string): Promise<any> {
-    const systemPrompt = "You are an expert at extracting tables from clinical research papers. Identify all tables in the document text and extract their structure (title, description, and data as 2D array). Return a JSON object with a 'tables' array.";
-    const userPrompt = `Extract all tables from this clinical study:\n\n${documentText}`;
-
-    const tableSchema = {
-        type: Type.OBJECT,
-        properties: {
-            "tables": {
-                "type": Type.ARRAY,
-                "items": {
-                    "type": Type.OBJECT,
-                    "properties": {
-                        "title": { "type": Type.STRING, "description": "Table title or caption" },
-                        "description": { "type": Type.STRING, "description": "Brief description of table content" },
-                        "data": {
-                            "type": Type.ARRAY,
-                            "items": {
-                                "type": Type.ARRAY,
-                                "items": { "type": Type.STRING }
-                            },
-                            "description": "2D array of table data (rows and columns)"
-                        }
-                    }
-                }
-            }
-        }
-    };
-
-    const response = await aiCircuitBreaker.execute(async () => {
-        return await retryWithExponentialBackoff(async () => {
-            return await initializeAI().models.generateContent({
-                model: 'gemini-2.5-pro',
-                contents: [{ parts: [{ text: userPrompt }] }],
-                config: {
-                    systemInstruction: systemPrompt,
-                    responseMimeType: "application/json",
-                    responseSchema: tableSchema
-                }
-            });
-        }, 'Table extraction (fallback)');
-    });
-
-    const jsonText = response.text;
-    return safeJsonParse(jsonText, 'Table extraction (fallback)');
-}
-
-/**
- * Fallback: Analyze image using direct Gemini API
- */
-async function analyzeImageFallback(imageBase64: string, prompt: string): Promise<string> {
-    const response = await aiCircuitBreaker.execute(async () => {
-        return await retryWithExponentialBackoff(async () => {
-            return await initializeAI().models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: [{
-                    parts: [
-                        { text: prompt },
-                        {
-                            inlineData: {
-                                data: imageBase64,
-                                mimeType: 'image/png'
-                            }
-                        }
-                    ]
-                }]
-            });
-        }, 'Image analysis (fallback)');
-    });
-
-    return response.text;
-}
-
-/**
- * Fallback: Deep analysis using direct Gemini API with extended thinking
- */
-async function deepAnalysisFallback(documentText: string, prompt: string): Promise<string> {
-    const response = await aiCircuitBreaker.execute(async () => {
-        return await retryWithExponentialBackoff(async () => {
-            return await initializeAI().models.generateContent({
-                model: 'gemini-2.5-pro',
-                contents: [{ parts: [{ text: `${prompt}\n\nDocument text:\n${documentText}` }] }],
-                config: {
-                    thinkingBudget: 32768
-                }
-            });
-        }, 'Deep analysis (fallback)');
-    });
-
-    return response.text;
-}
-
 // ==================== AI EXTRACTION FUNCTIONS ====================
 
 /**
- * ✨ Generates PICO-T summary via backend API (with fallback to direct Gemini)
+ * ✨ Generates PICO-T summary using DirectGeminiClient.
+ * Model: gemini-2.5-flash
  */
 async function generatePICO(): Promise<void> {
     const state = AppStateManager.getState();
@@ -624,34 +202,9 @@ async function generatePICO(): Promise<void> {
             throw new Error("Could not read text from the PDF.");
         }
 
-        let data: any;
-
-        // Try backend first (secure, recommended)
-        if (await shouldUseBackend()) {
-            try {
-                console.log('🔒 Using backend API for PICO-T extraction (secure mode)');
-                const response = await BackendAIClient.generatePICO({
-                    document_id: state.documentName || 'unknown',
-                    pdf_text: documentText
-                });
-                data = {
-                    population: response.population,
-                    intervention: response.intervention,
-                    comparator: response.comparator,
-                    outcomes: response.outcomes,
-                    timing: response.timing,
-                    studyType: response.study_type
-                };
-            } catch (backendError) {
-                console.warn('Backend PICO-T extraction failed, falling back to direct Gemini:', backendError);
-                // Fall through to fallback
-                data = await generatePICOFallback(documentText);
-            }
-        } else {
-            // Backend unavailable, use fallback
-            console.warn('⚠️ Backend unavailable, using direct Gemini (fallback mode)');
-            data = await generatePICOFallback(documentText);
-        }
+        // Use DirectGeminiClient for extraction
+        const client = initializeGeminiClient();
+        const data = await client.generatePICO(documentText);
 
         // Populate fields
         const populationField = document.getElementById('eligibility-population') as HTMLInputElement;
@@ -681,9 +234,7 @@ async function generatePICO(): Promise<void> {
         StatusManager.show('✨ PICO-T fields auto-populated by Gemini!', 'success');
 
     } catch (error: any) {
-        logErrorWithContext(error, 'PICO-T extraction');
-        const categorized = categorizeAIError(error, 'PICO-T extraction');
-        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+        StatusManager.show(`Error: ${error.message}`, 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         const loadingEl = document.getElementById('pico-loading');
@@ -692,7 +243,7 @@ async function generatePICO(): Promise<void> {
 }
 
 /**
- * ✨ Generates a summary of key findings using Gemini API.
+ * ✨ Generates a summary of key findings using DirectGeminiClient.
  * Model: gemini-flash-latest
  */
 async function generateSummary(): Promise<void> {
@@ -717,27 +268,9 @@ async function generateSummary(): Promise<void> {
             throw new Error("Could not read text from the PDF.");
         }
 
-        let summaryText: string;
-
-        // Try backend first (secure, recommended)
-        if (await shouldUseBackend()) {
-            try {
-                console.log('🔒 Using backend API for summary generation (secure mode)');
-                const response = await BackendAIClient.generateSummary({
-                    document_id: state.documentName || 'unknown',
-                    pdf_text: documentText
-                });
-                summaryText = response.summary;
-            } catch (backendError) {
-                console.warn('Backend summary generation failed, falling back to direct Gemini:', backendError);
-                // Fall through to fallback
-                summaryText = await generateSummaryFallback(documentText);
-            }
-        } else {
-            // Backend unavailable, use fallback
-            console.warn('⚠️ Backend unavailable, using direct Gemini (fallback mode)');
-            summaryText = await generateSummaryFallback(documentText);
-        }
+        // Use DirectGeminiClient for summary generation
+        const client = initializeGeminiClient();
+        const summaryText = await client.generateSummary(documentText);
 
         const summaryField = document.getElementById('predictorsPoorOutcomeSurgical') as HTMLTextAreaElement;
         if (summaryField) summaryField.value = summaryText;
@@ -756,9 +289,7 @@ async function generateSummary(): Promise<void> {
         StatusManager.show('✨ Key findings summary generated by Gemini!', 'success');
 
     } catch (error: any) {
-        logErrorWithContext(error, 'Summary generation');
-        const categorized = categorizeAIError(error, 'Summary generation');
-        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+        StatusManager.show(`Error: ${error.message}`, 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         const loadingEl = document.getElementById('summary-loading');
@@ -767,7 +298,7 @@ async function generateSummary(): Promise<void> {
 }
 
 /**
- * ✨ Validates a field's content against the PDF text using Gemini.
+ * ✨ Validates a field's content against the PDF text using DirectGeminiClient.
  * Model: gemini-2.5-pro
  */
 async function validateFieldWithAI(fieldId: string): Promise<void> {
@@ -803,44 +334,9 @@ async function validateFieldWithAI(fieldId: string): Promise<void> {
             throw new Error("Could not read text from PDF for validation.");
         }
 
-        const systemPrompt = `You are a fact-checking expert specializing in clinical research papers. Your task is to determine if a given "claim" is directly supported by the provided "document text". You must respond with a JSON object.`;
-        const userPrompt = `DOCUMENT TEXT:\n"""${documentText}"""\n\nCLAIM:\n"""${claim}"""\n\nBased on the document text, is the claim supported? Provide a direct quote if it is.`;
-
-        const validationSchema = {
-            type: Type.OBJECT,
-            properties: {
-                "is_supported": {
-                    type: Type.BOOLEAN,
-                    description: "True if the claim is directly supported by the text, otherwise false."
-                },
-                "supporting_quote": {
-                    type: Type.STRING,
-                    description: "A direct quote from the document that supports the claim. If not supported, this should be an empty string or a brief explanation."
-                },
-                "confidence_score": {
-                    type: Type.NUMBER,
-                    description: "Your confidence in the validation from 0.0 to 1.0."
-                }
-            },
-            required: ["is_supported", "supporting_quote", "confidence_score"]
-        };
-
-        const response = await aiCircuitBreaker.execute(async () => {
-            return await retryWithExponentialBackoff(async () => {
-                return await initializeAI().models.generateContent({
-                    model: 'gemini-2.5-pro',
-                    contents: [{ parts: [{ text: userPrompt }] }],
-                    config: {
-                        systemInstruction: systemPrompt,
-                        responseMimeType: "application/json",
-                        responseSchema: validationSchema
-                    }
-                });
-            }, 'Field validation');
-        });
-
-        const jsonText = response.text;
-        const validation = safeJsonParse(jsonText, 'Field validation');
+        // Use DirectGeminiClient for field validation
+        const client = initializeGeminiClient();
+        const validation = await client.validateField(fieldId, claim, documentText);
 
         if (validation.is_supported) {
             StatusManager.show(`✓ VALIDATED (Confidence: ${Math.round(validation.confidence_score * 100)}%): "${validation.supporting_quote}"`, 'success', 10000);
@@ -851,9 +347,7 @@ async function validateFieldWithAI(fieldId: string): Promise<void> {
         }
 
     } catch (error: any) {
-        logErrorWithContext(error, 'Field validation');
-        const categorized = categorizeAIError(error, 'Field validation');
-        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+        StatusManager.show(`Error: ${error.message}`, 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         StatusManager.showLoading(false);
@@ -861,7 +355,7 @@ async function validateFieldWithAI(fieldId: string): Promise<void> {
 }
 
 /**
- * ✨ Finds study metadata using Gemini with Google Search.
+ * ✨ Finds study metadata using DirectGeminiClient with Google Search.
  * Model: gemini-2.5-flash + Google Search
  */
 async function findMetadata(): Promise<void> {
@@ -883,21 +377,9 @@ async function findMetadata(): Promise<void> {
     StatusManager.show('✨ Searching Google for metadata...', 'info');
 
     try {
-        const systemPrompt = "You are a research assistant. Find the metadata for the given study. Use Google Search to find the information. If a value isn't found, return an empty string for it. Provide only the JSON response.";
-        const userPrompt = `Find the DOI, PMID, journal name, and publication year for the following study: "${citationText}"`;
-
-        const metadataSchema = {
-            type: Type.OBJECT,
-            properties: {
-                "doi": { "type": Type.STRING, "description": "The DOI of the paper" },
-                "pmid": { "type": Type.STRING, "description": "The PubMed ID (PMID) of the paper" },
-                "journal": { "type": Type.STRING, "description": "The name of the journal" },
-                "year": { "type": Type.STRING, "description": "The 4-digit publication year" }
-            }
-        };
-
-        const responseJson = await callGeminiWithSearch(systemPrompt, userPrompt, metadataSchema);
-        const data = safeJsonParse(responseJson, 'Metadata search');
+        // Use DirectGeminiClient for metadata search
+        const client = initializeGeminiClient();
+        const data = await client.findMetadata(citationText);
 
         const doiField = document.getElementById('doi') as HTMLInputElement;
         const pmidField = document.getElementById('pmid') as HTMLInputElement;
@@ -912,9 +394,7 @@ async function findMetadata(): Promise<void> {
         StatusManager.show('✨ Metadata auto-populated!', 'success');
 
     } catch (error: any) {
-        logErrorWithContext(error, 'Metadata search');
-        const categorized = categorizeAIError(error, 'Metadata search');
-        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+        StatusManager.show(`Error: ${error.message}`, 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         const loadingEl = document.getElementById('metadata-loading');
@@ -1115,17 +595,16 @@ async function handleImageAnalysis(): Promise<void> {
 }
 
 /**
- * ✨ Performs deep analysis on the document text via backend API (with fallback to direct Gemini)
- * Backend: Uses gemini-2.5-pro with extended thinking
- * Fallback: Direct Gemini API with 32768 thinking budget
+ * ✨ Performs deep analysis on the document text using Gemini Pro with thinking budget.
+ * Model: gemini-2.5-pro (with 32768 thinking budget)
  */
 async function handleDeepAnalysis(): Promise<void> {
     const state = AppStateManager.getState();
     const promptField = document.getElementById('deep-analysis-prompt') as HTMLInputElement;
     const resultsContainer = document.getElementById('deep-analysis-results');
-    const userPrompt = promptField?.value || '';
+    const prompt = promptField?.value || '';
 
-    if (!userPrompt) {
+    if (!prompt) {
         StatusManager.show("Please enter a prompt for deep analysis.", "warning");
         return;
     }
@@ -1141,37 +620,21 @@ async function handleDeepAnalysis(): Promise<void> {
         const documentText = await getAllPdfText();
         if (!documentText) return;
 
-        let analysisText: string;
+        const fullPrompt = `Based on the following document text, please answer this question: ${prompt}\n\nDOCUMENT TEXT:\n${documentText}`;
 
-        // Try backend first (secure, recommended)
-        if (await shouldUseBackend()) {
-            try {
-                console.log('🔒 Using backend API for deep analysis (secure mode)');
-                StatusManager.show('✨ Performing deep analysis via backend...', 'info');
-
-                const response = await BackendAIClient.deepAnalysis({
-                    document_id: state.documentName || 'unknown',
-                    pdf_text: documentText,
-                    prompt: userPrompt
+        const response = await aiCircuitBreaker.execute(async () => {
+            return await retryWithExponentialBackoff(async () => {
+                return await initializeAI().models.generateContent({
+                    model: 'gemini-2.5-pro',
+                    contents: fullPrompt,
+                    config: {
+                        thinkingConfig: { thinkingBudget: 32768 }
+                    }
                 });
+            }, 'Deep analysis');
+        });
 
-                analysisText = response.analysis;
-            } catch (backendError) {
-                console.warn('Backend deep analysis failed, falling back to direct Gemini:', backendError);
-                StatusManager.show('⚠️ Backend unavailable, using fallback mode...', 'warning');
-                // Fall through to fallback
-                analysisText = await deepAnalysisFallback(documentText, userPrompt);
-            }
-        } else {
-            // Backend unavailable, use fallback
-            console.warn('⚠️ Backend unavailable, using direct Gemini (fallback mode)');
-            StatusManager.show('⚠️ Using fallback mode for deep analysis...', 'warning');
-            analysisText = await deepAnalysisFallback(documentText, userPrompt);
-        }
-
-        // Display results
-        if (resultsContainer) resultsContainer.innerText = analysisText;
-        StatusManager.show('✅ Deep analysis complete!', 'success');
+        if (resultsContainer) resultsContainer.innerText = response.text;
 
     } catch (error: any) {
         logErrorWithContext(error, 'Deep analysis');
