@@ -30,57 +30,19 @@
  * - Consider using Firebase App Check or similar attestation
  */
 
-import { GoogleGenAI, Type } from "@google/genai";
 import AppStateManager from '../state/AppStateManager';
 import ExtractionTracker from '../data/ExtractionTracker';
 import StatusManager from '../utils/status';
 import LRUCache from '../utils/LRUCache';
-import CircuitBreaker from '../utils/CircuitBreaker';
-import { categorizeAIError, isErrorRetryable, formatErrorMessage, logErrorWithContext } from '../utils/aiErrorHandler';
+import { formatErrorMessage } from '../utils/aiErrorHandler';
+import { createDirectGeminiClient, DirectGeminiClient } from './DirectGeminiClient';
 
 // ==================== AI CLIENT INITIALIZATION ====================
 
 /**
- * Get Gemini API Key from Vite environment variables
- * Supports multiple environment variable names for backward compatibility:
- * - VITE_GEMINI_API_KEY (preferred)
- * - VITE_API_KEY (alternative)
- * - VITE_GOOGLE_API_KEY (alternative)
- *
- * In Vite, environment variables must be prefixed with VITE_ to be exposed to the client
- * Access via import.meta.env instead of process.env
- *
- * ⚠️ PRODUCTION WARNING: API KEY EXPOSURE RISK
- * ================================================
- * This implementation loads API keys from frontend environment variables, which exposes them
- * in the compiled JavaScript bundle. This is a known security limitation of frontend-only
- * implementations.
- *
- * RISK LEVEL: HIGH (10/10) - API keys visible in browser DevTools
- *
- * CURRENT MITIGATIONS:
- * - Use Google Cloud Console API restrictions (HTTP referrers, IP allowlisting)
- * - Monitor API usage for abuse via Cloud Console
- * - Rate limiting via Circuit Breaker pattern
- * - Acceptable for: demos, personal projects, development environments
- *
- * PRODUCTION RECOMMENDATIONS:
- * - Implement backend proxy (see BACKEND_MIGRATION_PLAN.md)
- * - Use Firebase App Check or similar attestation
- * - Rotate API keys regularly
- * - Set up billing alerts in Google Cloud Console
- *
- * TODO: Migrate to backend proxy architecture (like MedicalAgentBridge.callBackendAgent)
- * See BACKEND_MIGRATION_PLAN.md for implementation steps
+ * Lazy-initialized DirectGeminiClient instance
  */
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY ||
-                import.meta.env.VITE_API_KEY ||
-                import.meta.env.VITE_GOOGLE_API_KEY;
-
-/**
- * Lazy-initialized AI client instance
- */
-let ai: GoogleGenAI | null = null;
+let geminiClient: DirectGeminiClient | null = null;
 
 /**
  * LRU Cache for PDF text with 50-page limit
@@ -88,33 +50,18 @@ let ai: GoogleGenAI | null = null;
 const pdfTextLRUCache = new LRUCache<number, { fullText: string, items: Array<any> }>(50);
 
 /**
- * Circuit Breaker for AI service resilience
+ * Initialize DirectGeminiClient with user-friendly error handling
  */
-const aiCircuitBreaker = new CircuitBreaker({
-    failureThreshold: 5,
-    successThreshold: 2,
-    timeout: 60000,
-});
+function initializeGeminiClient(): DirectGeminiClient {
+    if (geminiClient) return geminiClient;
 
-/**
- * Initialize Google Generative AI client with user-friendly error handling
- */
-function initializeAI(): GoogleGenAI {
-    if (ai) return ai;
-    
-    if (!API_KEY) {
-        const errorMsg = `⚠️ Gemini API Key Not Configured
-
-To use AI features, create a .env.local file in the project root with:
-VITE_GEMINI_API_KEY=your_api_key_here
-
-Get your free API key at: https://ai.google.dev/`;
-        StatusManager.show(errorMsg, 'error', 30000);
-        throw new Error('Gemini API key not configured');
+    try {
+        geminiClient = createDirectGeminiClient();
+        return geminiClient;
+    } catch (error: any) {
+        StatusManager.show(error.message, 'error', 30000);
+        throw error;
     }
-    
-    ai = new GoogleGenAI({ apiKey: API_KEY });
-    return ai;
 }
 
 // ==================== HELPER FUNCTIONS ====================
@@ -211,30 +158,6 @@ async function getAllPdfText(): Promise<string | null> {
 }
 
 /**
- * Calls the Gemini API with Google Search grounding.
- * Includes retry logic with exponential backoff for rate limits.
- * @param {string} systemInstruction - The system instruction.
- * @param {string} userPrompt - The user query.
- * @param {object} responseSchema - The JSON schema for the response.
- * @returns {Promise<string>} - The text content from the API response.
- */
-async function callGeminiWithSearch(systemInstruction: string, userPrompt: string, responseSchema: any): Promise<string> {
-    return await retryWithExponentialBackoff(async () => {
-        const response = await initializeAI().models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: [{ parts: [{ text: userPrompt }] }],
-            config: {
-                systemInstruction,
-                tools: [{googleSearch: {}}],
-                responseMimeType: "application/json",
-                responseSchema
-            }
-        });
-        return response.text;
-    }, 'Gemini Search API call');
-}
-
-/**
  * Converts a Blob to base64 string
  * @param {Blob} blob - The blob to convert
  * @returns {Promise<string>} - Base64 encoded string
@@ -250,115 +173,10 @@ function blobToBase64(blob: Blob): Promise<string> {
     });
 }
 
-// ==================== RETRY LOGIC WITH EXPONENTIAL BACKOFF ====================
-
-/**
- * Retry configuration for API calls
- */
-const RETRY_CONFIG = {
-    maxAttempts: 3,
-    delays: [2000, 4000, 8000], // 2s, 4s, 8s
-    retryableStatusCodes: [429, 500, 502, 503, 504]
-};
-
-/**
- * Checks if an error is retryable (429, 5xx errors, network errors)
- * Now uses the centralized error categorization system
- * @param error - The error to check
- * @returns True if the error should trigger a retry
- */
-function isRetryableError(error: any): boolean {
-    // Use centralized error handler for consistent retry logic
-    return isErrorRetryable(error);
-}
-
-/**
- * Delays execution for a specified number of milliseconds
- * @param ms - Milliseconds to delay
- */
-function delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
- * Safely parses JSON with comprehensive error handling
- * @param jsonText - JSON string to parse
- * @param context - Context for error messaging
- * @returns Parsed object
- * @throws Error with user-friendly message if parsing fails
- */
-function safeJsonParse(jsonText: string, context: string = 'AI response'): any {
-    try {
-        if (!jsonText || !jsonText.trim()) {
-            throw new Error('AI returned empty response');
-        }
-
-        return JSON.parse(jsonText);
-    } catch (parseError) {
-        console.error(`Failed to parse ${context}:`, jsonText);
-        logErrorWithContext(parseError, `JSON Parse - ${context}`, { rawResponse: jsonText });
-
-        throw new Error(
-            `AI returned invalid response format. This may indicate the document is too complex or the AI service is degraded. ` +
-            `Please try again or contact support if the issue persists.`
-        );
-    }
-}
-
-/**
- * Wraps an async function with exponential backoff retry logic
- * Retries on 429 (rate limit) and 5xx server errors
- * 
- * @param fn - Async function to retry
- * @param context - Description of the operation for user feedback
- * @returns Promise that resolves with the function result
- */
-async function retryWithExponentialBackoff<T>(
-    fn: () => Promise<T>,
-    context: string = 'API call'
-): Promise<T> {
-    let lastError: any;
-    
-    for (let attempt = 0; attempt < RETRY_CONFIG.maxAttempts; attempt++) {
-        try {
-            return await fn();
-        } catch (error: any) {
-            lastError = error;
-            
-            const isLastAttempt = attempt === RETRY_CONFIG.maxAttempts - 1;
-            
-            if (!isRetryableError(error)) {
-                throw error;
-            }
-            
-            if (isLastAttempt) {
-                console.error(`${context} failed after ${RETRY_CONFIG.maxAttempts} attempts`);
-                throw error;
-            }
-            
-            const delayMs = RETRY_CONFIG.delays[attempt];
-            const delaySec = delayMs / 1000;
-            
-            console.warn(`${context} failed (attempt ${attempt + 1}/${RETRY_CONFIG.maxAttempts}). Retrying in ${delaySec}s...`);
-            console.warn('Error:', error.message || error);
-            
-            StatusManager.show(
-                `AI service is busy, retrying in ${delaySec} seconds... (attempt ${attempt + 1}/${RETRY_CONFIG.maxAttempts})`,
-                'warning',
-                delayMs
-            );
-            
-            await delay(delayMs);
-        }
-    }
-    
-    throw lastError;
-}
-
 // ==================== AI EXTRACTION FUNCTIONS ====================
 
 /**
- * ✨ Generates PICO-T summary using Gemini API.
+ * ✨ Generates PICO-T summary using DirectGeminiClient.
  * Model: gemini-2.5-flash
  */
 async function generatePICO(): Promise<void> {
@@ -384,38 +202,9 @@ async function generatePICO(): Promise<void> {
             throw new Error("Could not read text from the PDF.");
         }
 
-        const systemPrompt = "You are an expert clinical research assistant specializing in systematic reviews. Your task is to extract PICO-TT (Population, Intervention, Comparator, Outcomes, Timing, and sTudy Type) information from the provided clinical study text using the PICO-TT framework methodology. This framework is essential for systematic review quality and research reproducibility. Return the information as a JSON object. Be concise and accurate. If information is not found, return an empty string for that field.";
-        const userPrompt = `Here is the clinical study text:\n\n${documentText}`;
-
-        const picoSchema = {
-            type: Type.OBJECT,
-            properties: {
-                "population": { "type": Type.STRING, "description": "The study population (e.g., '57 patients with malignant cerebellar infarction')" },
-                "intervention": { "type": Type.STRING, "description": "The intervention performed (e.g., 'suboccipital decompressive craniectomy (SDC)')" },
-                "comparator": { "type": Type.STRING, "description": "The comparison group (e.g., 'best medical treatment alone' or 'no comparator')" },
-                "outcomes": { "type": Type.STRING, "description": "The primary outcomes measured (e.g., 'mRS at 12-month follow-up')" },
-                "timing": { "type": Type.STRING, "description": "The follow-up timing (e.g., '12-month follow-up')" },
-                "studyType": { "type": Type.STRING, "description": "The type of study (e.g., 'retrospective-matched case-control study')" }
-            }
-        };
-
-        // Call Gemini with circuit breaker and retry logic
-        const response = await aiCircuitBreaker.execute(async () => {
-            return await retryWithExponentialBackoff(async () => {
-                return await initializeAI().models.generateContent({
-                    model: 'gemini-2.5-flash',
-                    contents: [{ parts: [{ text: userPrompt }] }],
-                    config: {
-                        systemInstruction: systemPrompt,
-                        responseMimeType: "application/json",
-                        responseSchema: picoSchema
-                    }
-                });
-            }, 'PICO-T extraction');
-        });
-
-        const jsonText = response.text;
-        const data = safeJsonParse(jsonText, 'PICO-T extraction');
+        // Use DirectGeminiClient for extraction
+        const client = initializeGeminiClient();
+        const data = await client.generatePICO(documentText);
 
         // Populate fields
         const populationField = document.getElementById('eligibility-population') as HTMLInputElement;
@@ -445,9 +234,7 @@ async function generatePICO(): Promise<void> {
         StatusManager.show('✨ PICO-T fields auto-populated by Gemini!', 'success');
 
     } catch (error: any) {
-        logErrorWithContext(error, 'PICO-T extraction');
-        const categorized = categorizeAIError(error, 'PICO-T extraction');
-        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+        StatusManager.show(`Error: ${error.message}`, 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         const loadingEl = document.getElementById('pico-loading');
@@ -456,7 +243,7 @@ async function generatePICO(): Promise<void> {
 }
 
 /**
- * ✨ Generates a summary of key findings using Gemini API.
+ * ✨ Generates a summary of key findings using DirectGeminiClient.
  * Model: gemini-flash-latest
  */
 async function generateSummary(): Promise<void> {
@@ -481,22 +268,9 @@ async function generateSummary(): Promise<void> {
             throw new Error("Could not read text from the PDF.");
         }
 
-        const systemPrompt = "You are an expert clinical research assistant. Your task is to read the provided clinical study text and write a concise summary (2-3 paragraphs) focusing on the key findings, outcomes, and any identified predictors of those outcomes.";
-        const userPrompt = `Please summarize the following clinical study text:\n\n${documentText}`;
-
-        const response = await aiCircuitBreaker.execute(async () => {
-            return await retryWithExponentialBackoff(async () => {
-                return await initializeAI().models.generateContent({
-                    model: 'gemini-flash-latest',
-                    contents: [{ parts: [{ text: userPrompt }] }],
-                    config: {
-                        systemInstruction: systemPrompt,
-                    }
-                });
-            }, 'Summary generation');
-        });
-
-        const summaryText = response.text;
+        // Use DirectGeminiClient for summary generation
+        const client = initializeGeminiClient();
+        const summaryText = await client.generateSummary(documentText);
 
         const summaryField = document.getElementById('predictorsPoorOutcomeSurgical') as HTMLTextAreaElement;
         if (summaryField) summaryField.value = summaryText;
@@ -515,9 +289,7 @@ async function generateSummary(): Promise<void> {
         StatusManager.show('✨ Key findings summary generated by Gemini!', 'success');
 
     } catch (error: any) {
-        logErrorWithContext(error, 'Summary generation');
-        const categorized = categorizeAIError(error, 'Summary generation');
-        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+        StatusManager.show(`Error: ${error.message}`, 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         const loadingEl = document.getElementById('summary-loading');
@@ -526,7 +298,7 @@ async function generateSummary(): Promise<void> {
 }
 
 /**
- * ✨ Validates a field's content against the PDF text using Gemini.
+ * ✨ Validates a field's content against the PDF text using DirectGeminiClient.
  * Model: gemini-2.5-pro
  */
 async function validateFieldWithAI(fieldId: string): Promise<void> {
@@ -562,44 +334,9 @@ async function validateFieldWithAI(fieldId: string): Promise<void> {
             throw new Error("Could not read text from PDF for validation.");
         }
 
-        const systemPrompt = `You are a fact-checking expert specializing in clinical research papers. Your task is to determine if a given "claim" is directly supported by the provided "document text". You must respond with a JSON object.`;
-        const userPrompt = `DOCUMENT TEXT:\n"""${documentText}"""\n\nCLAIM:\n"""${claim}"""\n\nBased on the document text, is the claim supported? Provide a direct quote if it is.`;
-
-        const validationSchema = {
-            type: Type.OBJECT,
-            properties: {
-                "is_supported": {
-                    type: Type.BOOLEAN,
-                    description: "True if the claim is directly supported by the text, otherwise false."
-                },
-                "supporting_quote": {
-                    type: Type.STRING,
-                    description: "A direct quote from the document that supports the claim. If not supported, this should be an empty string or a brief explanation."
-                },
-                "confidence_score": {
-                    type: Type.NUMBER,
-                    description: "Your confidence in the validation from 0.0 to 1.0."
-                }
-            },
-            required: ["is_supported", "supporting_quote", "confidence_score"]
-        };
-
-        const response = await aiCircuitBreaker.execute(async () => {
-            return await retryWithExponentialBackoff(async () => {
-                return await initializeAI().models.generateContent({
-                    model: 'gemini-2.5-pro',
-                    contents: [{ parts: [{ text: userPrompt }] }],
-                    config: {
-                        systemInstruction: systemPrompt,
-                        responseMimeType: "application/json",
-                        responseSchema: validationSchema
-                    }
-                });
-            }, 'Field validation');
-        });
-
-        const jsonText = response.text;
-        const validation = safeJsonParse(jsonText, 'Field validation');
+        // Use DirectGeminiClient for field validation
+        const client = initializeGeminiClient();
+        const validation = await client.validateField(fieldId, claim, documentText);
 
         if (validation.is_supported) {
             StatusManager.show(`✓ VALIDATED (Confidence: ${Math.round(validation.confidence_score * 100)}%): "${validation.supporting_quote}"`, 'success', 10000);
@@ -610,9 +347,7 @@ async function validateFieldWithAI(fieldId: string): Promise<void> {
         }
 
     } catch (error: any) {
-        logErrorWithContext(error, 'Field validation');
-        const categorized = categorizeAIError(error, 'Field validation');
-        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+        StatusManager.show(`Error: ${error.message}`, 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         StatusManager.showLoading(false);
@@ -620,7 +355,7 @@ async function validateFieldWithAI(fieldId: string): Promise<void> {
 }
 
 /**
- * ✨ Finds study metadata using Gemini with Google Search.
+ * ✨ Finds study metadata using DirectGeminiClient with Google Search.
  * Model: gemini-2.5-flash + Google Search
  */
 async function findMetadata(): Promise<void> {
@@ -642,21 +377,9 @@ async function findMetadata(): Promise<void> {
     StatusManager.show('✨ Searching Google for metadata...', 'info');
 
     try {
-        const systemPrompt = "You are a research assistant. Find the metadata for the given study. Use Google Search to find the information. If a value isn't found, return an empty string for it. Provide only the JSON response.";
-        const userPrompt = `Find the DOI, PMID, journal name, and publication year for the following study: "${citationText}"`;
-
-        const metadataSchema = {
-            type: Type.OBJECT,
-            properties: {
-                "doi": { "type": Type.STRING, "description": "The DOI of the paper" },
-                "pmid": { "type": Type.STRING, "description": "The PubMed ID (PMID) of the paper" },
-                "journal": { "type": Type.STRING, "description": "The name of the journal" },
-                "year": { "type": Type.STRING, "description": "The 4-digit publication year" }
-            }
-        };
-
-        const responseJson = await callGeminiWithSearch(systemPrompt, userPrompt, metadataSchema);
-        const data = safeJsonParse(responseJson, 'Metadata search');
+        // Use DirectGeminiClient for metadata search
+        const client = initializeGeminiClient();
+        const data = await client.findMetadata(citationText);
 
         const doiField = document.getElementById('doi') as HTMLInputElement;
         const pmidField = document.getElementById('pmid') as HTMLInputElement;
@@ -671,9 +394,7 @@ async function findMetadata(): Promise<void> {
         StatusManager.show('✨ Metadata auto-populated!', 'success');
 
     } catch (error: any) {
-        logErrorWithContext(error, 'Metadata search');
-        const categorized = categorizeAIError(error, 'Metadata search');
-        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
+        StatusManager.show(`Error: ${error.message}`, 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         const loadingEl = document.getElementById('metadata-loading');
