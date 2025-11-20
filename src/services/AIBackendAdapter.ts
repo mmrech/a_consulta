@@ -103,7 +103,9 @@ const AIBackendAdapter = {
     },
 
     async deepAnalysis(pdfText: string, prompt: string, documentId?: string): Promise<string> {
-        const resolvedDocId = documentId || (await ensureBackendReady());
+        // Always ensure backend auth/session is ready, even when a custom documentId is provided.
+        const fallbackDocId = await ensureBackendReady();
+        const resolvedDocId = documentId || fallbackDocId;
         const response = await BackendClient.deepAnalysis(resolvedDocId, pdfText, prompt);
         const parsed = unwrapResponse<{ analysis?: string } | string>(response);
         if (typeof parsed === 'string') return parsed;

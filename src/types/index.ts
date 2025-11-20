@@ -36,14 +36,16 @@ export interface Coordinates {
  * Constant array of all valid extraction methods.
  * Used to derive the ExtractionMethod type and for runtime validation.
  * - 'manual': User-selected text from PDF
- * - 'gemini-pico': AI-generated PICO analysis
- * - 'gemini-summary': AI-generated summary
+ * - 'backend-ai-pico': AI-generated PICO analysis (via backend)
+ * - 'backend-ai-summary': AI-generated summary (via backend)
  * - 'gemini-metadata': AI-extracted metadata
  * - 'gemini-table': AI-extracted table data
  * - 'gemini-deep': Deep AI analysis
  */
 export const EXTRACTION_METHODS = [
   'manual',
+  'backend-ai-pico',
+  'backend-ai-summary',
   'gemini-pico',
   'gemini-summary',
   'gemini-metadata',
