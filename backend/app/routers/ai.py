@@ -13,12 +13,15 @@ from ..models import (
     MetadataRequest, MetadataResponse,
     TableExtractionRequest, TableExtractionResponse,
     ImageAnalysisRequest, ImageAnalysisResponse,
-    DeepAnalysisRequest, DeepAnalysisResponse
+    DeepAnalysisRequest, DeepAnalysisResponse,
+    FileUploadRequest, FileUploadResponse,
+    QueryWithCitationsRequest, QueryWithCitationsResponse
 )
 from ..auth import get_current_user
 from ..config import settings
 from ..rate_limiter import rate_limiter
 from ..services.llm import generate_text, parse_json_strict
+from ..services.file_search import file_search_service
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
@@ -268,4 +271,63 @@ DOCUMENT TEXT:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"AI deep analysis failed: {str(e)}"
+        )
+
+
+@router.post("/upload-pdf", response_model=FileUploadResponse)
+async def upload_pdf_to_file_search(
+    request: FileUploadRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Upload a PDF to Gemini File Search store for citation-enabled queries"""
+    rate_limiter.check_rate_limit(f"ai:{current_user.id}", settings.AI_RATE_LIMIT_PER_MINUTE)
+    
+    # Validate input size (max 10MB for PDF)
+    if len(request.pdf_data) > 10_000_000:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="PDF too large. Maximum size is 10MB."
+        )
+    
+    try:
+        result = await file_search_service.upload_pdf_to_file_search(
+            document_id=request.document_id,
+            pdf_base64=request.pdf_data,
+            filename=request.filename
+        )
+        
+        return FileUploadResponse(
+            document_id=request.document_id,
+            file_search_store_id=result["file_search_store_id"],
+            message=result["message"]
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload PDF: {str(e)}"
+        )
+
+
+@router.post("/query-with-citations", response_model=QueryWithCitationsResponse)
+async def query_with_citations(
+    request: QueryWithCitationsRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Query a document and get answer with citations using File Search"""
+    rate_limiter.check_rate_limit(f"ai:{current_user.id}", settings.AI_RATE_LIMIT_PER_MINUTE)
+    
+    try:
+        result = await file_search_service.query_with_citations(
+            document_id=request.document_id,
+            file_search_store_id=request.file_search_store_id,
+            query=request.query
+        )
+        
+        return QueryWithCitationsResponse(**result)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Query with citations failed: {str(e)}"
         )

@@ -281,6 +281,41 @@ class DeepAnalysisResponse(BaseModel):
     analysis: str
 
 
+# Citation Models for Gemini File Search
+class FileUploadRequest(BaseModel):
+    """Request to upload PDF to File Search store"""
+    document_id: str
+    pdf_data: str  # Base64 encoded PDF
+    filename: str
+
+
+class FileUploadResponse(BaseModel):
+    """Response from file upload"""
+    document_id: str
+    file_search_store_id: str
+    message: str
+
+
+class CitationQuery(BaseModel):
+    """Citation text snippet with metadata"""
+    text: str
+    page_number: Optional[int] = None
+    confidence: Optional[float] = None
+
+
+class QueryWithCitationsRequest(BaseModel):
+    """Request to query with citations"""
+    document_id: str
+    file_search_store_id: str
+    query: str
+
+
+class QueryWithCitationsResponse(BaseModel):
+    """Response with answer and citations"""
+    document_id: str
+    answer: str
+    citations: List[CitationQuery] = []
+
 
 class InMemoryDatabase:
     """Simple in-memory database for proof of concept"""
