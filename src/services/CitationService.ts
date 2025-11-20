@@ -573,6 +573,101 @@ export const jumpToCitation = (
     });
 };
 
+// ==================== SEARCH FUNCTIONALITY ====================
+
+export interface SearchResult {
+    text: string
+    pageNumber: number
+    x: number
+    y: number
+    width: number
+    height: number
+}
+
+/**
+ * Search for text in the current citation map
+ * Returns locations where the text was found
+ */
+export const searchText = async (searchText: string, citationMap?: CitationMap): Promise<SearchResult[]> => {
+    const results: SearchResult[] = []
+    const map = citationMap || CitationService.getInstance().citationMap
+    
+    if (!map || Object.keys(map).length === 0) {
+        console.warn('No citation map available for search')
+        return results
+    }
+    
+    const normalizedSearch = searchText.toLowerCase().trim()
+    
+    // Search through all citations
+    Object.values(map).forEach(citation => {
+        if (citation.sentence.toLowerCase().includes(normalizedSearch)) {
+            results.push({
+                text: citation.sentence,
+                pageNumber: citation.pageNum,
+                x: citation.bbox.x,
+                y: citation.bbox.y,
+                width: citation.bbox.width,
+                height: citation.bbox.height
+            })
+        }
+    })
+    
+    console.log(`📍 Found ${results.length} matches for "${searchText}"`)
+    return results
+}
+
+/**
+ * Scroll to a specific citation location
+ */
+export const scrollToCitation = async (location: {
+    pageNumber: number
+    x: number
+    y: number
+    width: number
+    height: number
+    text?: string
+}): Promise<void> => {
+    // Get dependencies for highlighting
+    if (!dependencies) {
+        console.warn('Dependencies not injected. Call setDependencies() first.')
+        return
+    }
+    
+    // Create a temporary citation for highlighting
+    const tempCitation: Citation = {
+        index: -1,  // Temporary index
+        pageNum: location.pageNumber,
+        sentence: location.text || '',
+        bbox: {
+            x: location.x,
+            y: location.y,
+            width: location.width,
+            height: location.height
+        },
+        confidence: 1.0
+    }
+    
+    // Draw highlight
+    drawCitationHighlight(tempCitation)
+    
+    // Scroll the canvas into view if needed
+    const canvas = dependencies.getCanvas()
+    if (canvas) {
+        const scale = dependencies.getScale()
+        const scrollY = location.y * scale
+        
+        // Scroll to make the citation visible
+        canvas.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        
+        // Additional scroll to specific position
+        window.scrollTo({
+            top: scrollY - 100,  // Offset for better visibility
+            behavior: 'smooth'
+        })
+    }
+}
+
 // ==================== EXPORT ALL ====================
 
 export default {
@@ -589,4 +684,6 @@ export default {
     highlightCitation,
     clearCitationHighlights,
     jumpToCitation,
+    searchText,
+    scrollToCitation,
 };

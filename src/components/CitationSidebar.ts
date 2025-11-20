@@ -4,7 +4,7 @@
  */
 
 import { citationAPIClient } from '../services/CitationAPIClient'
-import { CitationService } from '../services/CitationService'
+import { CitationService, searchText, scrollToCitation } from '../services/CitationService'
 import { AppStateManager } from '../state/AppStateManager'
 
 interface Citation {
