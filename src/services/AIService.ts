@@ -5,29 +5,19 @@
 
 /**
  * AIService
- * Handles all Gemini AI integration functions for the Clinical Extractor
+ * Handles all backend AI integration functions for the Clinical Extractor
  *
  * Includes 7 AI-powered functions:
- * 1. generatePICO() - Extract PICO-T summary (gemini-2.5-flash)
- * 2. generateSummary() - Generate key findings summary (gemini-flash-latest)
- * 3. validateFieldWithAI() - Validate field content (gemini-2.5-pro)
- * 4. findMetadata() - Search for study metadata (gemini-2.5-flash + Google Search)
- * 5. handleExtractTables() - Extract tables from document (gemini-2.5-pro)
- * 6. handleImageAnalysis() - Analyze uploaded images (gemini-2.5-flash)
- * 7. handleDeepAnalysis() - Deep document analysis (gemini-2.5-pro + thinking)
+ * 1. generatePICO() - Extract PICO-T summary
+ * 2. generateSummary() - Generate key findings summary
+ * 3. validateFieldWithAI() - Validate field content
+ * 4. findMetadata() - Search for study metadata
+ * 5. handleExtractTables() - Extract tables from document
+ * 6. handleImageAnalysis() - Analyze uploaded images
+ * 7. handleDeepAnalysis() - Deep document analysis
  *
- * ⚠️ SECURITY WARNING:
- * This implementation loads the Gemini API key from environment variables, which
- * exposes it in the frontend JavaScript bundle. This is acceptable for:
- * - Development and testing environments
- * - Personal projects and demos
- * - Applications with domain restrictions on the API key
- *
- * For production deployments:
- * - Use a backend proxy or serverless functions to protect the API key
- * - Implement rate limiting and request authentication
- * - Monitor API usage for abuse
- * - Consider using Firebase App Check or similar attestation
+ * All requests are proxied through the FastAPI backend via BackendClient to keep
+ * API keys and model access on the server. No frontend API keys or SDKs are used.
  */
 
 import AppStateManager from '../state/AppStateManager';
@@ -35,34 +25,14 @@ import ExtractionTracker from '../data/ExtractionTracker';
 import StatusManager from '../utils/status';
 import LRUCache from '../utils/LRUCache';
 import { formatErrorMessage, logErrorWithContext, categorizeAIError } from '../utils/aiErrorHandler';
-import { createDirectGeminiClient, DirectGeminiClient } from './DirectGeminiClient';
+import AIBackendAdapter from './AIBackendAdapter';
 
 // ==================== AI CLIENT INITIALIZATION ====================
-
-/**
- * Lazy-initialized DirectGeminiClient instance
- */
-let geminiClient: DirectGeminiClient | null = null;
 
 /**
  * LRU Cache for PDF text with 50-page limit
  */
 const pdfTextLRUCache = new LRUCache<number, { fullText: string, items: Array<any> }>(50);
-
-/**
- * Initialize DirectGeminiClient with user-friendly error handling
- */
-function initializeGeminiClient(): DirectGeminiClient {
-    if (geminiClient) return geminiClient;
-
-    try {
-        geminiClient = createDirectGeminiClient();
-        return geminiClient;
-    } catch (error: any) {
-        StatusManager.show(error.message, 'error', 30000);
-        throw error;
-    }
-}
 
 // ==================== HELPER FUNCTIONS ====================
 
@@ -176,9 +146,8 @@ function blobToBase64(blob: Blob): Promise<string> {
 // ==================== AI EXTRACTION FUNCTIONS ====================
 
 /**
- * ✨ Generates PICO-T summary using DirectGeminiClient.
- * Model: gemini-2.5-flash
- */
+ * ✨ Generates PICO-T summary using backend AI endpoint.
+*/
 async function generatePICO(): Promise<void> {
     const state = AppStateManager.getState();
     if (!state.pdfDoc) {
@@ -202,9 +171,7 @@ async function generatePICO(): Promise<void> {
             throw new Error("Could not read text from the PDF.");
         }
 
-        // Use DirectGeminiClient for extraction
-        const client = initializeGeminiClient();
-        const data = await client.generatePICO(documentText);
+        const data = await AIBackendAdapter.generatePICO(documentText);
 
         // Populate fields
         const populationField = document.getElementById('eligibility-population') as HTMLInputElement;
@@ -224,17 +191,19 @@ async function generatePICO(): Promise<void> {
         // Add to trace log
         const state2 = AppStateManager.getState();
         const coords = { x: 0, y: 0, width: 0, height: 0 }; // AI extractions have no coords
-        ExtractionTracker.addExtraction({ fieldName: 'population (AI)', text: data.population, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
-        ExtractionTracker.addExtraction({ fieldName: 'intervention (AI)', text: data.intervention, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
-        ExtractionTracker.addExtraction({ fieldName: 'comparator (AI)', text: data.comparator, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
-        ExtractionTracker.addExtraction({ fieldName: 'outcomes (AI)', text: data.outcomes, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
-        ExtractionTracker.addExtraction({ fieldName: 'timing (AI)', text: data.timing, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
-        ExtractionTracker.addExtraction({ fieldName: 'studyType (AI)', text: data.studyType, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
+        ExtractionTracker.addExtraction({ fieldName: 'population (AI)', text: data.population, page: 0, coordinates: coords, method: 'backend-ai-pico', documentName: state2.documentName });
+        ExtractionTracker.addExtraction({ fieldName: 'intervention (AI)', text: data.intervention, page: 0, coordinates: coords, method: 'backend-ai-pico', documentName: state2.documentName });
+        ExtractionTracker.addExtraction({ fieldName: 'comparator (AI)', text: data.comparator, page: 0, coordinates: coords, method: 'backend-ai-pico', documentName: state2.documentName });
+        ExtractionTracker.addExtraction({ fieldName: 'outcomes (AI)', text: data.outcomes, page: 0, coordinates: coords, method: 'backend-ai-pico', documentName: state2.documentName });
+        ExtractionTracker.addExtraction({ fieldName: 'timing (AI)', text: data.timing, page: 0, coordinates: coords, method: 'backend-ai-pico', documentName: state2.documentName });
+        ExtractionTracker.addExtraction({ fieldName: 'studyType (AI)', text: data.studyType, page: 0, coordinates: coords, method: 'backend-ai-pico', documentName: state2.documentName });
 
-        StatusManager.show('✨ PICO-T fields auto-populated by Gemini!', 'success');
+        StatusManager.show('✨ PICO-T fields auto-populated by AI backend!', 'success');
 
     } catch (error: any) {
-        StatusManager.show(`Error: ${error.message}`, 'error', 15000);
+        logErrorWithContext(error, 'PICO extraction');
+        const categorized = categorizeAIError(error, 'PICO extraction');
+        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         const loadingEl = document.getElementById('pico-loading');
@@ -243,9 +212,8 @@ async function generatePICO(): Promise<void> {
 }
 
 /**
- * ✨ Generates a summary of key findings using DirectGeminiClient.
- * Model: gemini-flash-latest
- */
+ * ✨ Generates a summary of key findings using backend AI endpoint.
+*/
 async function generateSummary(): Promise<void> {
     const state = AppStateManager.getState();
     if (!state.pdfDoc) {
@@ -260,7 +228,7 @@ async function generateSummary(): Promise<void> {
     AppStateManager.setState({ isProcessing: true });
     const loadingEl = document.getElementById('summary-loading');
     if (loadingEl) loadingEl.style.display = 'block';
-    StatusManager.show('✨ Asking Gemini for summary...', 'info');
+    StatusManager.show('✨ Asking AI backend for summary...', 'info');
 
     try {
         const documentText = await getAllPdfText();
@@ -268,9 +236,7 @@ async function generateSummary(): Promise<void> {
             throw new Error("Could not read text from the PDF.");
         }
 
-        // Use DirectGeminiClient for summary generation
-        const client = initializeGeminiClient();
-        const summaryText = await client.generateSummary(documentText);
+        const summaryText = await AIBackendAdapter.generateSummary(documentText);
 
         const summaryField = document.getElementById('predictorsPoorOutcomeSurgical') as HTMLTextAreaElement;
         if (summaryField) summaryField.value = summaryText;
@@ -282,14 +248,16 @@ async function generateSummary(): Promise<void> {
             text: summaryText,
             page: 0,
             coordinates: {x:0, y:0, width:0, height:0},
-            method: 'gemini-summary',
+            method: 'backend-ai-summary',
             documentName: state2.documentName
         });
 
-        StatusManager.show('✨ Key findings summary generated by Gemini!', 'success');
+        StatusManager.show('✨ Key findings summary generated by AI backend!', 'success');
 
     } catch (error: any) {
-        StatusManager.show(`Error: ${error.message}`, 'error', 15000);
+        logErrorWithContext(error, 'Summary generation');
+        const categorized = categorizeAIError(error, 'Summary generation');
+        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         const loadingEl = document.getElementById('summary-loading');
@@ -298,9 +266,8 @@ async function generateSummary(): Promise<void> {
 }
 
 /**
- * ✨ Validates a field's content against the PDF text using DirectGeminiClient.
- * Model: gemini-2.5-pro
- */
+ * ✨ Validates a field's content against the PDF text using backend AI endpoint.
+*/
 async function validateFieldWithAI(fieldId: string): Promise<void> {
     const state = AppStateManager.getState();
     const field = document.getElementById(fieldId) as HTMLInputElement;
@@ -326,7 +293,7 @@ async function validateFieldWithAI(fieldId: string): Promise<void> {
 
     AppStateManager.setState({ isProcessing: true });
     StatusManager.showLoading(true);
-    StatusManager.show(`✨ Validating claim with Gemini: "${claim.substring(0, 30)}..."`, 'info');
+    StatusManager.show(`✨ Validating claim with AI backend: "${claim.substring(0, 30)}..."`, 'info');
 
     try {
         const documentText = await getAllPdfText();
@@ -334,9 +301,7 @@ async function validateFieldWithAI(fieldId: string): Promise<void> {
             throw new Error("Could not read text from PDF for validation.");
         }
 
-        // Use DirectGeminiClient for field validation
-        const client = initializeGeminiClient();
-        const validation = await client.validateField(fieldId, claim, documentText);
+        const validation = await AIBackendAdapter.validateField(fieldId, claim, documentText);
 
         if (validation.is_supported) {
             StatusManager.show(`✓ VALIDATED (Confidence: ${Math.round(validation.confidence_score * 100)}%): "${validation.supporting_quote}"`, 'success', 10000);
@@ -347,7 +312,9 @@ async function validateFieldWithAI(fieldId: string): Promise<void> {
         }
 
     } catch (error: any) {
-        StatusManager.show(`Error: ${error.message}`, 'error', 15000);
+        logErrorWithContext(error, 'Field validation');
+        const categorized = categorizeAIError(error, 'Field validation');
+        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         StatusManager.showLoading(false);
@@ -355,9 +322,8 @@ async function validateFieldWithAI(fieldId: string): Promise<void> {
 }
 
 /**
- * ✨ Finds study metadata using DirectGeminiClient with Google Search.
- * Model: gemini-2.5-flash + Google Search
- */
+ * ✨ Finds study metadata using backend AI endpoint.
+*/
 async function findMetadata(): Promise<void> {
     const state = AppStateManager.getState();
     if (state.isProcessing) {
@@ -374,12 +340,10 @@ async function findMetadata(): Promise<void> {
     AppStateManager.setState({ isProcessing: true });
     const loadingEl = document.getElementById('metadata-loading');
     if (loadingEl) loadingEl.style.display = 'block';
-    StatusManager.show('✨ Searching Google for metadata...', 'info');
+    StatusManager.show('✨ Contacting AI backend for metadata...', 'info');
 
     try {
-        // Use DirectGeminiClient for metadata search
-        const client = initializeGeminiClient();
-        const data = await client.findMetadata(citationText);
+        const data = await AIBackendAdapter.findMetadata(citationText);
 
         const doiField = document.getElementById('doi') as HTMLInputElement;
         const pmidField = document.getElementById('pmid') as HTMLInputElement;
@@ -394,7 +358,9 @@ async function findMetadata(): Promise<void> {
         StatusManager.show('✨ Metadata auto-populated!', 'success');
 
     } catch (error: any) {
-        StatusManager.show(`Error: ${error.message}`, 'error', 15000);
+        logErrorWithContext(error, 'Metadata search');
+        const categorized = categorizeAIError(error, 'Metadata search');
+        StatusManager.show(formatErrorMessage(categorized), 'error', 15000);
     } finally {
         AppStateManager.setState({ isProcessing: false });
         const loadingEl = document.getElementById('metadata-loading');
@@ -403,9 +369,8 @@ async function findMetadata(): Promise<void> {
 }
 
 /**
- * ✨ Extracts tables from the document using Gemini Pro.
- * Model: gemini-2.5-pro
- */
+ * ✨ Extracts tables from the document using backend AI endpoint.
+*/
 async function handleExtractTables(): Promise<void> {
     const state = AppStateManager.getState();
     const resultsContainer = document.getElementById('table-extraction-results');
@@ -421,8 +386,7 @@ async function handleExtractTables(): Promise<void> {
         const documentText = await getAllPdfText();
         if (!documentText) return;
 
-        const client = initializeGeminiClient();
-        const result = await client.extractTables(documentText);
+        const result = await AIBackendAdapter.extractTables(documentText);
 
         if (result.tables && result.tables.length > 0 && resultsContainer) {
             renderTables(result.tables, resultsContainer);
@@ -499,9 +463,8 @@ function renderTables(tables: any[], container: HTMLElement): void {
 }
 
 /**
- * ✨ Analyzes an uploaded image with a text prompt using Gemini Flash.
- * Model: gemini-2.5-flash
- */
+ * ✨ Analyzes an uploaded image with a text prompt using backend AI endpoint.
+*/
 async function handleImageAnalysis(): Promise<void> {
     const fileInput = document.getElementById('image-upload-input') as HTMLInputElement;
     const promptField = document.getElementById('image-analysis-prompt') as HTMLInputElement;
@@ -523,8 +486,7 @@ async function handleImageAnalysis(): Promise<void> {
 
     try {
         const base64Data = await blobToBase64(file);
-        const client = initializeGeminiClient();
-        const analysis = await client.analyzeImage(base64Data, file.type, prompt);
+        const analysis = await AIBackendAdapter.analyzeImage(base64Data, file.type, prompt);
 
         if (resultsContainer) resultsContainer.innerText = analysis;
 
@@ -539,9 +501,8 @@ async function handleImageAnalysis(): Promise<void> {
 }
 
 /**
- * ✨ Performs deep analysis on the document text using Gemini Pro with thinking budget.
- * Model: gemini-2.5-pro (with 32768 thinking budget)
- */
+ * ✨ Performs deep analysis on the document text using backend AI endpoint.
+*/
 async function handleDeepAnalysis(): Promise<void> {
     const state = AppStateManager.getState();
     const promptField = document.getElementById('deep-analysis-prompt') as HTMLInputElement;
@@ -564,8 +525,7 @@ async function handleDeepAnalysis(): Promise<void> {
         const documentText = await getAllPdfText();
         if (!documentText) return;
 
-        const client = initializeGeminiClient();
-        const analysis = await client.deepAnalysis(documentText, prompt);
+        const analysis = await AIBackendAdapter.deepAnalysis(documentText, prompt);
 
         if (resultsContainer) resultsContainer.innerText = analysis;
 

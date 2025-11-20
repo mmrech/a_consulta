@@ -9,8 +9,7 @@
  * Tests the integration between frontend AI operations and backend API:
  * - BackendAIClient: All 7 AI functions via backend API
  * - BackendProxyService: Robust HTTP request handling
- * - DirectGeminiClient: Fallback when backend unavailable
- * - UnifiedAIService: Smart routing between backend and direct calls
+ * - UnifiedAIService: Smart routing through backend adapter
  *
  * Test Coverage:
  * - Backend-first routing for all 7 AI functions
@@ -45,22 +44,8 @@ jest.mock('../../src/services/BackendProxyService', () => {
     };
 });
 
-// Mock DirectGeminiClient for fallback testing
-jest.mock('../../src/services/DirectGeminiClient', () => ({
-    DirectGeminiClient: {
-        generatePICO: jest.fn(),
-        generateSummary: jest.fn(),
-        validateField: jest.fn(),
-        findMetadata: jest.fn(),
-        extractTables: jest.fn(),
-        analyzeImage: jest.fn(),
-        deepAnalysis: jest.fn()
-    }
-}));
-
 import { BackendAIClient } from '../../src/services/BackendAIClient';
 import { BackendProxyService } from '../../src/services/BackendProxyService';
-import { DirectGeminiClient } from '../../src/services/DirectGeminiClient';
 
 describe('Backend Integration Tests', () => {
     beforeEach(() => {
