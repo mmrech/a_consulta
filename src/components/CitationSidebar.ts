@@ -6,6 +6,7 @@
 import { citationAPIClient } from '../services/CitationAPIClient'
 import { CitationService, searchText, scrollToCitation } from '../services/CitationService'
 import { AppStateManager } from '../state/AppStateManager'
+import { citationCache, CitationIndexedDBCache } from '../services/CitationIndexedDBCache'
 
 interface Citation {
     text: string
@@ -382,20 +383,59 @@ export class CitationSidebar {
             return
         }
         
+        const documentId = pdfData.documentId || 'doc-' + Date.now()
+        const fileName = pdfData.fileName || 'document.pdf'
+        
         // Show loading state
         if (uploadBtn) {
             uploadBtn.disabled = true
-            uploadBtn.textContent = 'Uploading...'
+            uploadBtn.textContent = 'Checking cache...'
         }
         
         try {
-            const response = await citationAPIClient.uploadPDFForCitations(
-                pdfData.documentId || 'doc-' + Date.now(),
-                pdfData.base64Data,
-                pdfData.fileName || 'document.pdf'
-            )
+            // Check IndexedDB cache first
+            await citationCache.initialize()
+            const cachedEntry = await citationCache.getFileSearchStore(documentId)
             
-            this.fileSearchStoreId = response.file_search_store_id
+            // Calculate hash to check if file changed
+            const currentHash = await CitationIndexedDBCache.calculatePDFHash(pdfData.base64Data)
+            
+            if (cachedEntry && cachedEntry.pdfHash === currentHash) {
+                // Use cached file search store ID
+                console.log('✓ Using cached File Search store:', cachedEntry.fileSearchStoreId)
+                this.fileSearchStoreId = cachedEntry.fileSearchStoreId
+                
+                // Update UI for cache hit
+                if (uploadStatus) {
+                    uploadStatus.className = 'upload-status success'
+                    uploadStatus.textContent = '✓ Using cached File Search store'
+                }
+                
+                if (uploadBtn) {
+                    uploadBtn.textContent = 'Re-upload PDF'
+                    uploadBtn.disabled = false
+                }
+            } else {
+                // Upload to Gemini File Search
+                if (uploadBtn) {
+                    uploadBtn.textContent = 'Uploading...'
+                }
+                
+                const response = await citationAPIClient.uploadPDFForCitations(
+                    documentId,
+                    pdfData.base64Data,
+                    fileName
+                )
+                
+                this.fileSearchStoreId = response.file_search_store_id
+                
+                // Cache the file search store ID
+                await citationCache.setFileSearchStore(
+                    documentId,
+                    response.file_search_store_id,
+                    fileName,
+                    currentHash
+                )
             
             // Update UI on success
             if (uploadStatus) {

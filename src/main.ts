@@ -66,6 +66,8 @@ import AgentOrchestrator from './services/AgentOrchestrator';
 import DiagnosticsPanel from './services/DiagnosticsPanel';
 import BackendHealthMonitor from './services/BackendHealthMonitor';
 import BackendClient from './services/BackendClient';
+import { getCitationSidebar } from './components/CitationSidebar';
+import { citationAPIClient } from './services/CitationAPIClient';
 
 // Utilities
 import {
@@ -1082,7 +1084,11 @@ async function initializeApp() {
         DiagnosticsPanel.initialize();
         console.log('✓ Diagnostics Panel initialized');
 
-        // 10. Show initial status
+        // 10. Initialize Citation Sidebar
+        const citationSidebar = getCitationSidebar();
+        console.log('✓ Citation Sidebar initialized');
+
+        // 11. Show initial status
         StatusManager.show('Clinical Extractor Ready. Load a PDF to begin.', 'info');
         console.log('✓ Clinical Extractor initialization complete');
 
