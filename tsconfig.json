@@ -33,5 +33,11 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "index.tsx",
+    "archives/**",
+    "analysis/**",
+    "Bach/**"
+  ]
 }

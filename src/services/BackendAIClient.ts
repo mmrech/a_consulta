@@ -4,348 +4,184 @@
  */
 
 /**
- * BackendAIClient - Secure AI API proxy client
+ * BackendAIClient
+ * Typed HTTP helper for calling backend AI endpoints.
  *
- * Wraps all 7 AI functions to call backend API instead of direct Gemini
- * Implements Phase 2 of Backend Migration Plan v2.0
- *
- * Security improvements:
- * - API keys never exposed to frontend
- * - Server-side authentication required
- * - Rate limiting enforced by backend
- * - Request validation and sanitization
- *
- * Architecture:
- * Frontend (BackendAIClient) → Backend (/api/ai/*) → Gemini API
+ * All requests are routed through the FastAPI backend using the
+ * `VITE_BACKEND_URL` environment variable to avoid exposing API keys
+ * in the browser bundle.
  */
 
-import BackendProxyService from './BackendProxyService';
-import type { ProxyResponse } from './BackendProxyService';
+function resolveBackendUrl(): string {
+    const fromGlobal = (globalThis as any)?.__BACKEND_URL__ as string | undefined;
+    const fromProcess = process.env.VITE_BACKEND_URL;
 
-// ==================== REQUEST/RESPONSE TYPES ====================
-
-/**
- * PICO-T generation request
- */
-export interface PICORequest {
-    document_id?: string;
-    pdf_text: string;
+    return fromGlobal || fromProcess || 'http://localhost:8000';
 }
 
-/**
- * PICO-T generation response
- */
+const BACKEND_URL = resolveBackendUrl();
+
+interface RequestOptions {
+    path: string;
+    body?: Record<string, unknown>;
+}
+
+interface BackendErrorPayload {
+    detail?: string;
+    message?: string;
+}
+
 export interface PICOResponse {
     population: string;
     intervention: string;
     comparator: string;
     outcomes: string;
     timing: string;
-    study_type: string;
+    study_type?: string;
+    studyType?: string;
 }
 
-/**
- * Summary generation request
- */
-export interface SummaryRequest {
-    document_id?: string;
-    pdf_text: string;
-}
-
-/**
- * Summary generation response
- */
 export interface SummaryResponse {
     summary: string;
 }
 
-/**
- * Field validation request
- */
-export interface ValidationRequest {
-    document_id?: string;
-    field_id: string;
-    field_value: string;
-    pdf_text: string;
-}
-
-/**
- * Field validation response
- */
 export interface ValidationResponse {
     is_supported: boolean;
-    quote: string;
-    confidence: number;
+    supporting_quote: string;
+    confidence_score: number;
 }
 
-/**
- * Metadata extraction request
- */
-export interface MetadataRequest {
-    document_id?: string;
-    pdf_text: string;
-}
-
-/**
- * Metadata extraction response
- */
 export interface MetadataResponse {
-    doi: string | null;
-    pmid: string | null;
-    journal: string | null;
-    year: number | null;
+    doi?: string | null;
+    pmid?: string | null;
+    journal?: string | null;
+    year?: number | string | null;
 }
 
-/**
- * Table extraction request
- */
-export interface TableExtractionRequest {
-    document_id?: string;
-    pdf_text: string;
-}
-
-/**
- * Table data structure
- */
 export interface TableData {
     title: string;
-    description: string;
+    description?: string;
     data: string[][];
 }
 
-/**
- * Table extraction response
- */
 export interface TableExtractionResponse {
     tables: TableData[];
 }
 
-/**
- * Image analysis request
- */
-export interface ImageAnalysisRequest {
-    document_id?: string;
-    image_base64: string;
-    prompt: string;
-}
-
-/**
- * Image analysis response
- */
 export interface ImageAnalysisResponse {
     analysis: string;
 }
 
-/**
- * Deep analysis request
- */
-export interface DeepAnalysisRequest {
-    document_id?: string;
-    pdf_text: string;
-    prompt: string;
-}
-
-/**
- * Deep analysis response
- */
 export interface DeepAnalysisResponse {
     analysis: string;
 }
 
-// ==================== BACKEND AI CLIENT ====================
+function buildHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+    };
 
-/**
- * BackendAIClient - Centralized client for backend AI operations
- *
- * All 7 AI functions now proxy through backend for security:
- * 1. generatePICO() - PICO-T extraction
- * 2. generateSummary() - Key findings summary
- * 3. validateField() - Field validation
- * 4. findMetadata() - Metadata search
- * 5. extractTables() - Table extraction
- * 6. analyzeImage() - Image analysis
- * 7. deepAnalysis() - Deep document analysis
- */
-export const BackendAIClient = {
-    /**
-     * 1. Generate PICO-T summary
-     * Proxies to: POST /api/ai/generate-pico
-     */
-    async generatePICO(request: PICORequest): Promise<PICOResponse> {
+    const token = typeof localStorage !== 'undefined'
+        ? localStorage.getItem('la_consulta_access_token')
+        : null;
+
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    return headers;
+}
+
+async function request<T>({ path, body }: RequestOptions): Promise<T> {
+    const response = await fetch(`${BACKEND_URL}${path}`, {
+        method: 'POST',
+        headers: buildHeaders(),
+        body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (!response.ok) {
+        let errorDetail = `Request to ${path} failed`;
         try {
-            const response = await BackendProxyService.request<PICOResponse>({
-                url: '/api/ai/generate-pico',
-                method: 'POST',
-                body: request,
-                cache: true,        // PICO extraction is deterministic, can be cached
-                timeout: 60000      // 60s timeout for AI processing
-            });
-            return response.data;
-        } catch (error) {
-            console.error('BackendAIClient.generatePICO failed:', error);
-            throw new Error(
-                `Failed to generate PICO-T via backend: ${
-                    error instanceof Error ? error.message : 'Unknown error'
-                }`
-            );
+            const errorBody = (await response.json()) as BackendErrorPayload;
+            errorDetail = errorBody.detail || errorBody.message || errorDetail;
+        } catch {
+            const text = await response.text().catch(() => '');
+            if (text) {
+                errorDetail = text;
+            }
         }
+        throw new Error(errorDetail);
+    }
+
+    return (await response.json()) as T;
+}
+
+async function getHealth(): Promise<boolean> {
+    try {
+        const response = await fetch(`${BACKEND_URL}/health`, { method: 'GET' });
+        return response.ok;
+    } catch {
+        return false;
+    }
+}
+
+const BackendAIClient = {
+    async generatePICO(pdfText: string, documentId?: string): Promise<PICOResponse> {
+        return request<PICOResponse>({
+            path: '/api/ai/generate-pico',
+            body: { document_id: documentId, pdf_text: pdfText },
+        });
     },
 
-    /**
-     * 2. Generate summary
-     * Proxies to: POST /api/ai/generate-summary
-     */
-    async generateSummary(request: SummaryRequest): Promise<SummaryResponse> {
-        try {
-            const response = await BackendProxyService.request<SummaryResponse>({
-                url: '/api/ai/generate-summary',
-                method: 'POST',
-                body: request,
-                cache: true,        // Summary generation is deterministic, can be cached
-                timeout: 60000      // 60s timeout for AI processing
-            });
-            return response.data;
-        } catch (error) {
-            console.error('BackendAIClient.generateSummary failed:', error);
-            throw new Error(
-                `Failed to generate summary via backend: ${
-                    error instanceof Error ? error.message : 'Unknown error'
-                }`
-            );
-        }
+    async generateSummary(pdfText: string, documentId?: string): Promise<SummaryResponse> {
+        return request<SummaryResponse>({
+            path: '/api/ai/generate-summary',
+            body: { document_id: documentId, pdf_text: pdfText },
+        });
     },
 
-    /**
-     * 3. Validate field
-     * Proxies to: POST /api/ai/validate-field
-     */
-    async validateField(request: ValidationRequest): Promise<ValidationResponse> {
-        try {
-            const response = await BackendProxyService.request<ValidationResponse>({
-                url: '/api/ai/validate-field',
-                method: 'POST',
-                body: request,
-                cache: false,       // Validation is dynamic (field value changes), don't cache
-                timeout: 30000      // 30s timeout (faster than generation)
-            });
-            return response.data;
-        } catch (error) {
-            console.error('BackendAIClient.validateField failed:', error);
-            throw new Error(
-                `Failed to validate field via backend: ${
-                    error instanceof Error ? error.message : 'Unknown error'
-                }`
-            );
-        }
+    async validateField(
+        fieldId: string,
+        fieldValue: string,
+        pdfText: string,
+        documentId?: string,
+    ): Promise<ValidationResponse> {
+        return request<ValidationResponse>({
+            path: '/api/ai/validate-field',
+            body: { document_id: documentId, field_id: fieldId, field_value: fieldValue, pdf_text: pdfText },
+        });
     },
 
-    /**
-     * 4. Find metadata
-     * Proxies to: POST /api/ai/find-metadata
-     */
-    async findMetadata(request: MetadataRequest): Promise<MetadataResponse> {
-        try {
-            const response = await BackendProxyService.request<MetadataResponse>({
-                url: '/api/ai/find-metadata',
-                method: 'POST',
-                body: request,
-                cache: true,        // Metadata extraction is deterministic, can be cached
-                timeout: 30000      // 30s timeout (faster than full PICO)
-            });
-            return response.data;
-        } catch (error) {
-            console.error('BackendAIClient.findMetadata failed:', error);
-            throw new Error(
-                `Failed to find metadata via backend: ${
-                    error instanceof Error ? error.message : 'Unknown error'
-                }`
-            );
-        }
+    async findMetadata(pdfText: string, documentId?: string): Promise<MetadataResponse> {
+        return request<MetadataResponse>({
+            path: '/api/ai/find-metadata',
+            body: { document_id: documentId, pdf_text: pdfText },
+        });
     },
 
-    /**
-     * 5. Extract tables
-     * Proxies to: POST /api/ai/extract-tables
-     */
-    async extractTables(request: TableExtractionRequest): Promise<TableExtractionResponse> {
-        try {
-            const response = await BackendProxyService.request<TableExtractionResponse>({
-                url: '/api/ai/extract-tables',
-                method: 'POST',
-                body: request,
-                cache: true,        // Table extraction is deterministic, can be cached
-                timeout: 60000      // 60s timeout for complex table processing
-            });
-            return response.data;
-        } catch (error) {
-            console.error('BackendAIClient.extractTables failed:', error);
-            throw new Error(
-                `Failed to extract tables via backend: ${
-                    error instanceof Error ? error.message : 'Unknown error'
-                }`
-            );
-        }
+    async extractTables(pdfText: string, documentId?: string): Promise<TableExtractionResponse> {
+        return request<TableExtractionResponse>({
+            path: '/api/ai/extract-tables',
+            body: { document_id: documentId, pdf_text: pdfText },
+        });
     },
 
-    /**
-     * 6. Analyze image
-     * Proxies to: POST /api/ai/analyze-image
-     */
-    async analyzeImage(request: ImageAnalysisRequest): Promise<ImageAnalysisResponse> {
-        try {
-            const response = await BackendProxyService.request<ImageAnalysisResponse>({
-                url: '/api/ai/analyze-image',
-                method: 'POST',
-                body: request,
-                cache: false,       // Image analysis with custom prompts, don't cache
-                timeout: 60000      // 60s timeout for image processing
-            });
-            return response.data;
-        } catch (error) {
-            console.error('BackendAIClient.analyzeImage failed:', error);
-            throw new Error(
-                `Failed to analyze image via backend: ${
-                    error instanceof Error ? error.message : 'Unknown error'
-                }`
-            );
-        }
+    async analyzeImage(imageBase64: string, mimeType: string, prompt: string, documentId?: string): Promise<ImageAnalysisResponse> {
+        return request<ImageAnalysisResponse>({
+            path: '/api/ai/analyze-image',
+            body: { document_id: documentId, image_base64: imageBase64, mime_type: mimeType, prompt },
+        });
     },
 
-    /**
-     * 7. Deep analysis
-     * Proxies to: POST /api/ai/deep-analysis
-     */
-    async deepAnalysis(request: DeepAnalysisRequest): Promise<DeepAnalysisResponse> {
-        try {
-            const response = await BackendProxyService.request<DeepAnalysisResponse>({
-                url: '/api/ai/deep-analysis',
-                method: 'POST',
-                body: request,
-                cache: false,       // Deep analysis with custom prompts, don't cache
-                timeout: 120000     // 120s timeout for extended reasoning
-            });
-            return response.data;
-        } catch (error) {
-            console.error('BackendAIClient.deepAnalysis failed:', error);
-            throw new Error(
-                `Failed to perform deep analysis via backend: ${
-                    error instanceof Error ? error.message : 'Unknown error'
-                }`
-            );
-        }
+    async deepAnalysis(pdfText: string, prompt: string, documentId?: string): Promise<DeepAnalysisResponse> {
+        return request<DeepAnalysisResponse>({
+            path: '/api/ai/deep-analysis',
+            body: { document_id: documentId, pdf_text: pdfText, prompt },
+        });
     },
 
-    /**
-     * Health check - verify backend AI service is available
-     */
     async healthCheck(): Promise<boolean> {
-        try {
-            const response = await BackendProxyService.get('/health');
-            return response.status >= 200 && response.status < 300;
-        } catch (error) {
-            console.warn('Backend AI health check failed:', error);
-            return false;
-        }
+        return getHealth();
     },
 };
 
