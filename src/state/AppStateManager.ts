@@ -247,6 +247,16 @@ class AppStateManagerClass {
   }
 
   /**
+   * Get the PDF base64 data if available.
+   * Used for uploading PDFs to File Search for citation functionality.
+   * 
+   * @returns The base64-encoded PDF data string, or null if not available
+   */
+  getPDFBase64Data(): string | null {
+    return this.state.pdfBase64Data || null;
+  }
+
+  /**
    * Test-only method to reset state and clear subscribers.
    * This is explicitly named to indicate it's for testing purposes only.
    * 

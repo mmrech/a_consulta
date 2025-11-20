@@ -210,6 +210,12 @@ export interface AppState {
    * Map from paragraph ID to section ID for fast lookup
    */
   paragraphIdToSectionId?: Map<number, number>;
+  
+  /**
+   * Base64 encoded PDF data for API uploads (needed for citations)
+   * Stored when PDF is loaded to enable File Search uploads
+   */
+  pdfBase64Data?: string;
 }
 
 // Re-export citation types for convenience

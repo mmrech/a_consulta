@@ -3,7 +3,7 @@ Gemini File Search Service
 Handles PDF uploads to File Search stores and querying with citations
 """
 import base64
-import time
+import asyncio
 import json
 from typing import Optional, Dict, Any, List
 from google import genai
@@ -60,7 +60,7 @@ class FileSearchService:
             max_wait = 60
             elapsed = 0
             while not operation.done and elapsed < max_wait:
-                time.sleep(5)
+                await asyncio.sleep(5)
                 operation = self.client.operations.get(operation)
                 elapsed += 5
             

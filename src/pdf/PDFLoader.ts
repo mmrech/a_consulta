@@ -164,6 +164,15 @@ const PDFLoader = {
 
       // Convert file to ArrayBuffer for PDF.js
       const arrayBuffer = await file.arrayBuffer();
+      
+      // Also create base64 string for API uploads (needed for citations)
+      const base64String = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          resolve(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+      });
 
       // Configure PDF.js worker (must be set before first getDocument call)
       if (!window.pdfjsLib) {
@@ -181,13 +190,14 @@ const PDFLoader = {
       // Sanitize filename for security
       const sanitizedName = SecurityUtils.sanitizeText(file.name);
 
-      // Update application state
+      // Update application state (including base64 data for citations)
       AppStateManager.setState({
         pdfDoc,
         totalPages: pdfDoc.numPages,
         documentName: sanitizedName,
         isProcessing: false,
-        pdfTextCache: new Map() // Clear cache on new load
+        pdfTextCache: new Map(), // Clear cache on new load
+        pdfBase64Data: base64String // Store base64 for citations
       });
 
       console.log('📖 Extracting text chunks for semantic search and citations...');

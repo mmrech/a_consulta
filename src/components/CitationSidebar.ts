@@ -5,7 +5,7 @@
 
 import { citationAPIClient } from '../services/CitationAPIClient'
 import { CitationService, searchText, scrollToCitation } from '../services/CitationService'
-import { AppStateManager } from '../state/AppStateManager'
+import AppStateManager from '../state/AppStateManager'
 import { citationCache, CitationIndexedDBCache } from '../services/CitationIndexedDBCache'
 
 interface Citation {
@@ -22,7 +22,7 @@ export class CitationSidebar {
     private isVisible: boolean = false
     private currentCitations: Citation[] = []
     private citationService: CitationService
-    private appState: AppStateManager
+    private appState: typeof AppStateManager
     private fileSearchStoreId: string | null = null
 
     constructor(containerId: string = 'citation-sidebar') {
@@ -36,7 +36,7 @@ export class CitationSidebar {
         }
         this.container = container
         this.citationService = CitationService.getInstance()
-        this.appState = AppStateManager.getInstance()
+        this.appState = AppStateManager
         
         this.setupStyles()
         this.render()
@@ -374,8 +374,10 @@ export class CitationSidebar {
         const queryBtn = document.getElementById('query-btn') as HTMLButtonElement
         
         // Get current PDF data from AppState
-        const pdfData = this.appState.getCurrentPDFData()
-        if (!pdfData) {
+        const pdfBase64Data = this.appState.getPDFBase64Data()
+        const state = this.appState.getState()
+        
+        if (!pdfBase64Data || !state.documentName) {
             if (uploadStatus) {
                 uploadStatus.className = 'upload-status error'
                 uploadStatus.textContent = 'No PDF loaded. Please load a PDF first.'
@@ -383,8 +385,8 @@ export class CitationSidebar {
             return
         }
         
-        const documentId = pdfData.documentId || 'doc-' + Date.now()
-        const fileName = pdfData.fileName || 'document.pdf'
+        const documentId = 'doc-' + Date.now()
+        const fileName = state.documentName || 'document.pdf'
         
         // Show loading state
         if (uploadBtn) {
@@ -398,7 +400,7 @@ export class CitationSidebar {
             const cachedEntry = await citationCache.getFileSearchStore(documentId)
             
             // Calculate hash to check if file changed
-            const currentHash = await CitationIndexedDBCache.calculatePDFHash(pdfData.base64Data)
+            const currentHash = await CitationIndexedDBCache.calculatePDFHash(pdfBase64Data)
             
             if (cachedEntry && cachedEntry.pdfHash === currentHash) {
                 // Use cached file search store ID
@@ -423,7 +425,7 @@ export class CitationSidebar {
                 
                 const response = await citationAPIClient.uploadPDFForCitations(
                     documentId,
-                    pdfData.base64Data,
+                    pdfBase64Data,
                     fileName
                 )
                 
@@ -498,8 +500,11 @@ export class CitationSidebar {
         }
         
         try {
+            const state = this.appState.getState()
+            const documentId = state.documentName ? `doc-${state.documentName.replace(/\s+/g, '-')}` : 'doc-' + Date.now()
+            
             const response = await citationAPIClient.queryWithCitations(
-                this.appState.getCurrentPDFData()?.documentId || 'doc-' + Date.now(),
+                documentId,
                 this.fileSearchStoreId,
                 query
             )

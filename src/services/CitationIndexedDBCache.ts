@@ -19,6 +19,11 @@ interface FileSearchCacheEntry {
 export class CitationIndexedDBCache {
     private db: IDBDatabase | null = null
     private isInitialized = false
+    
+    // Cache eviction settings
+    private readonly MAX_CACHE_SIZE = 10  // Maximum number of entries
+    private readonly TTL_DAYS = 7  // Time-to-live in days
+    private readonly TTL_MS = this.TTL_DAYS * 24 * 60 * 60 * 1000  // TTL in milliseconds
 
     /**
      * Initialize the IndexedDB connection
@@ -86,8 +91,17 @@ export class CitationIndexedDBCache {
 
             const request = store.put(entry)
 
-            request.onsuccess = () => {
+            request.onsuccess = async () => {
                 console.log(`✓ Cached file search store for document: ${documentId}`)
+                
+                // Perform cache eviction after successful write
+                try {
+                    await this.evictOldEntries()
+                } catch (evictionError) {
+                    console.warn('Cache eviction failed:', evictionError)
+                    // Don't fail the write operation due to eviction error
+                }
+                
                 resolve()
             }
 
@@ -237,6 +251,143 @@ export class CitationIndexedDBCache {
             totalEntries: allEntries.length,
             oldestEntry: allEntries[0],
             newestEntry: allEntries[allEntries.length - 1]
+        }
+    }
+
+    /**
+     * Evict old entries based on TTL and max cache size
+     * This method is called after each write operation
+     */
+    async evictOldEntries(): Promise<void> {
+        if (!this.db) {
+            await this.initialize()
+        }
+
+        const now = Date.now()
+        const ttlCutoff = now - this.TTL_MS
+        
+        try {
+            // Get all entries to check for eviction
+            const allEntries = await this.getAllCachedStores()
+            
+            // Identify entries to evict based on TTL
+            const entriesToEvict: string[] = []
+            const validEntries: FileSearchCacheEntry[] = []
+            
+            for (const entry of allEntries) {
+                if (entry.uploadDate < ttlCutoff) {
+                    // Entry is older than TTL - mark for eviction
+                    entriesToEvict.push(entry.documentId)
+                    console.log(`Evicting expired entry (TTL): ${entry.documentId}`)
+                } else {
+                    validEntries.push(entry)
+                }
+            }
+            
+            // Check if we still have too many valid entries
+            if (validEntries.length > this.MAX_CACHE_SIZE) {
+                // Sort by upload date (oldest first)
+                validEntries.sort((a, b) => a.uploadDate - b.uploadDate)
+                
+                // Calculate how many to evict
+                const numberToEvict = validEntries.length - this.MAX_CACHE_SIZE
+                
+                // Add oldest entries to eviction list
+                for (let i = 0; i < numberToEvict; i++) {
+                    entriesToEvict.push(validEntries[i].documentId)
+                    console.log(`Evicting oldest entry (size limit): ${validEntries[i].documentId}`)
+                }
+            }
+            
+            // Perform evictions
+            if (entriesToEvict.length > 0) {
+                await this.evictEntries(entriesToEvict)
+                console.log(`✓ Evicted ${entriesToEvict.length} cache entries`)
+            }
+            
+        } catch (error) {
+            console.error('Failed to evict old cache entries:', error)
+            throw error
+        }
+    }
+    
+    /**
+     * Evict multiple cache entries by document ID
+     */
+    private async evictEntries(documentIds: string[]): Promise<void> {
+        if (!this.db) {
+            await this.initialize()
+        }
+
+        return new Promise((resolve, reject) => {
+            const transaction = this.db!.transaction([STORE_NAME], 'readwrite')
+            const store = transaction.objectStore(STORE_NAME)
+            
+            let evictionCount = 0
+            let errorOccurred = false
+            
+            for (const documentId of documentIds) {
+                const request = store.delete(documentId)
+                
+                request.onsuccess = () => {
+                    evictionCount++
+                    if (evictionCount === documentIds.length && !errorOccurred) {
+                        resolve()
+                    }
+                }
+                
+                request.onerror = () => {
+                    errorOccurred = true
+                    console.error(`Failed to evict entry ${documentId}:`, request.error)
+                    reject(request.error)
+                }
+            }
+            
+            // Handle case where documentIds is empty
+            if (documentIds.length === 0) {
+                resolve()
+            }
+        })
+    }
+    
+    /**
+     * Get the number of cached entries
+     */
+    async getCacheSize(): Promise<number> {
+        const allEntries = await this.getAllCachedStores()
+        return allEntries.length
+    }
+    
+    /**
+     * Get cache info including size and oldest entry date
+     */
+    async getCacheInfo(): Promise<{
+        size: number
+        oldestEntry?: Date
+        willEvictOnNextWrite: boolean
+    }> {
+        const allEntries = await this.getAllCachedStores()
+        const now = Date.now()
+        const ttlCutoff = now - this.TTL_MS
+        
+        if (allEntries.length === 0) {
+            return {
+                size: 0,
+                willEvictOnNextWrite: false
+            }
+        }
+        
+        // Sort by upload date
+        allEntries.sort((a, b) => a.uploadDate - b.uploadDate)
+        
+        // Check if eviction will occur
+        const hasExpiredEntries = allEntries.some(e => e.uploadDate < ttlCutoff)
+        const isOverLimit = allEntries.length >= this.MAX_CACHE_SIZE
+        
+        return {
+            size: allEntries.length,
+            oldestEntry: new Date(allEntries[0].uploadDate),
+            willEvictOnNextWrite: hasExpiredEntries || isOverLimit
         }
     }
 
