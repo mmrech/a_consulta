@@ -8,7 +8,6 @@
  *
  * End-to-end tests for the complete backend migration:
  * - Backend-first routing for AI operations
- * - Automatic fallback to DirectGeminiClient
  * - Cache utilization across operations
  * - UI integration with backend services
  *

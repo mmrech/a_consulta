@@ -81,6 +81,9 @@ import MemoryManager from './utils/memory';
 import { initializeErrorBoundary, triggerCrashStateSave } from './utils/errorBoundary';
 import { checkAndOfferRecovery, triggerManualRecovery } from './utils/errorRecovery';
 
+// Expose backend URL for services that cannot access import.meta directly in tests
+(globalThis as any).__BACKEND_URL__ = import.meta.env.VITE_BACKEND_URL;
+
 // ==================== DEPENDENCY INJECTION ====================
 
 /**

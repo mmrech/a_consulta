@@ -400,27 +400,22 @@ describe('AI Error Handling Tests', () => {
             expect(callCount).toBe(2);
         });
 
-        it('should fallback to DirectGeminiClient on backend failure', async () => {
+        it('should categorize backend outages without invoking deprecated fallbacks', async () => {
             // Simulate backend failure
             (BackendProxyService.request as jest.Mock).mockRejectedValue(
                 // @ts-expect-error - Jest mock typing limitation
                 new Error('503 Service Unavailable')
             );
 
-            const mockFallback = jest.fn(async () => ({ data: 'fallback success' }));
+            const mockFallback = jest.fn();
 
-            // Try backend first, then fallback
-            try {
-                await BackendProxyService.request({ url: '/api/ai/test', method: 'POST' });
-            } catch (error) {
-                const errorInfo = AIErrorHandler.categorizeError(error as Error);
-                if (errorInfo.category === 'SERVICE_UNAVAILABLE') {
-                    const result = await mockFallback();
-                    expect(result).toEqual({ data: 'fallback success' });
-                }
-            }
+            await expect(
+                BackendProxyService.request({ url: '/api/ai/test', method: 'POST' })
+            ).rejects.toThrow('503 Service Unavailable');
 
-            expect(mockFallback).toHaveBeenCalled();
+            const errorInfo = AIErrorHandler.categorizeError(new Error('503 Service Unavailable'));
+            expect(errorInfo.category).toBe('SERVICE_UNAVAILABLE');
+            expect(mockFallback).not.toHaveBeenCalled();
         });
 
         it('should maintain state consistency after errors', async () => {
