@@ -350,7 +350,7 @@ class BackendClient {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      const response = await fetch(`${BACKEND_URL}/health`, {
+      const response = await fetch(`${BACKEND_URL}/api/health`, {
         method: 'GET',
         signal: AbortSignal.timeout(2000), // 2 second timeout
       });

@@ -340,7 +340,7 @@ export const BackendAIClient = {
      */
     async healthCheck(): Promise<boolean> {
         try {
-            const response = await BackendProxyService.get('/health');
+            const response = await BackendProxyService.get('/api/health');
             return response.status >= 200 && response.status < 300;
         } catch (error) {
             console.warn('Backend AI health check failed:', error);

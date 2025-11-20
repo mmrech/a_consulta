@@ -476,7 +476,7 @@ export const BackendProxyService = {
      * Health check endpoint
      */
     healthCheck: async (url?: string): Promise<boolean> => {
-        const checkURL = url || `${BackendProxyService.config.baseURL}/health`;
+        const checkURL = url || `${BackendProxyService.config.baseURL}/api/health`;
         
         try {
             const response = await BackendProxyService.get(checkURL);
