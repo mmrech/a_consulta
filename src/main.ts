@@ -193,7 +193,7 @@ async function searchInPDF() {
 
     try {
         const results = await SearchService.search(query);
-        
+
         // Display results
         const resultsContainer = document.getElementById('search-results');
         if (resultsContainer) {
@@ -206,10 +206,10 @@ async function searchInPDF() {
                         <em>${result.context}</em>
                     </li>
                 `).join('');
-                
+
                 // Highlight results on current page
                 SearchService.highlightResults(state.currentPage);
-                
+
                 // If current page has results, ensure they're visible
                 const resultsOnCurrentPage = results.filter(r => r.page === state.currentPage);
                 if (resultsOnCurrentPage.length > 0) {
@@ -234,7 +234,7 @@ async function searchInPDF() {
 function setupEventListeners() {
     // PDF Library Dropdown
     const pdfLibrarySelect = document.getElementById('pdf-library-select') as HTMLSelectElement;
-    
+
     if (pdfLibrarySelect) {
         pdfLibrarySelect.addEventListener('change', async (e) => {
             const libraryId = (e.target as HTMLSelectElement).value;
@@ -347,6 +347,8 @@ function setupEventListeners() {
 
     // Drag and Drop for Upload Area
     const uploadArea = document.getElementById('upload-area');
+    const pdfFile = document.getElementById('pdf-file') as HTMLInputElement; // Assuming pdfFile is an input element
+
     if (uploadArea && pdfFile) {
         uploadArea.addEventListener('click', () => pdfFile.click());
 
@@ -748,19 +750,19 @@ function toggleSemanticSearch() {
 async function performSemanticSearch() {
     const input = document.getElementById('semantic-search-input') as HTMLInputElement;
     const resultsDiv = document.getElementById('semantic-search-results');
-    
+
     if (!input || !resultsDiv) return;
-    
+
     const query = input.value.trim();
     if (!query) {
         StatusManager.show('Please enter a search query', 'warning');
         return;
     }
-    
+
     try {
         StatusManager.showLoading(true);
         const results = await SemanticSearchService.search(query);
-        
+
         if (results.length === 0) {
             resultsDiv.innerHTML = '<p style="color: #666; font-style: italic;">No results found</p>';
         } else {
@@ -771,7 +773,7 @@ async function performSemanticSearch() {
                 </div>
             `).join('');
         }
-        
+
         StatusManager.show(`Found ${results.length} results`, 'success');
     } catch (error) {
         console.error('Semantic search error:', error);
@@ -790,7 +792,7 @@ async function jumpToPage(pageNum: number) {
         StatusManager.show('No PDF loaded', 'warning');
         return;
     }
-    
+
     await PDFRenderer.renderPage(pageNum, TextSelection);
 }
 
@@ -821,7 +823,7 @@ function toggleAnnotationTools() {
     if (panel) {
         const isVisible = panel.style.display !== 'none';
         panel.style.display = isVisible ? 'none' : 'block';
-        
+
         if (!isVisible) {
             const state = AppStateManager.getState();
             const pdfContainer = document.getElementById('pdf-container');
@@ -842,10 +844,10 @@ function toggleAnnotationTools() {
 function setAnnotationTool(tool: string) {
     const colorSelect = document.getElementById('annotation-color') as HTMLSelectElement;
     const color = colorSelect ? colorSelect.value : 'yellow';
-    
+
     AnnotationService.setTool(tool as any);
     AnnotationService.setColor(color as any);
-    
+
     StatusManager.show(`Annotation tool: ${tool} (${color})`, 'info');
 }
 
@@ -855,10 +857,10 @@ function setAnnotationTool(tool: string) {
 function configureBackendProxy() {
     const baseURL = prompt('Enter backend API base URL:', 'https://api.example.com');
     if (!baseURL) return;
-    
+
     const timeout = parseInt(prompt('Enter timeout (ms):', '5000') || '5000');
     const retryAttempts = parseInt(prompt('Enter retry attempts:', '3') || '3');
-    
+
     BackendProxyService.configure({
         baseURL,
         timeout,
@@ -868,7 +870,7 @@ function configureBackendProxy() {
         cacheTTL: 60000,
         rateLimitPerSecond: 10
     });
-    
+
     StatusManager.show(`Backend proxy configured: ${baseURL}`, 'success');
 }
 
@@ -954,7 +956,7 @@ function exposeWindowAPI() {
         toggleAnnotationTools,
         setAnnotationTool,
         configureBackendProxy,
-        
+
         // Sample PDF loading
         loadSamplePDF: async () => {
             try {
@@ -984,7 +986,7 @@ function exposeWindowAPI() {
     // Also expose individual functions for backward compatibility with HTML onclick handlers
     // This allows onclick="generatePICO()" to work directly
     Object.assign(window, window.ClinicalExtractor);
-    
+
     // Also expose SamplePDFService methods directly
     (window as any).SamplePDFService = SamplePDFService;
 
@@ -1037,7 +1039,7 @@ async function initializeApp() {
         // Initialize backend authentication
         await AuthManager.initialize();
         console.log('✓ Backend authentication initialized');
-        
+
         // Test backend connectivity
         try {
             const healthCheck = await fetch('/api/health');
@@ -1096,7 +1098,7 @@ async function initializeApp() {
         // 10. Initialize Citation Sidebar
         const citationSidebar = getCitationSidebar();
         console.log('✓ Citation Sidebar initialized');
-        
+
         // Add button to show Citation Sidebar
         const citationBtn = document.createElement('button');
         citationBtn.textContent = '📑 Show Citations';
@@ -1112,7 +1114,12 @@ async function initializeApp() {
 
     } catch (error) {
         console.error('Failed to initialize Clinical Extractor:', error);
-        StatusManager.show('Failed to initialize application. Check console for details.', 'error');
+        // Show error to user
+        const statusElement = document.getElementById('extraction-status');
+        if (statusElement) {
+            statusElement.textContent = 'Initialization error - please refresh the page';
+            statusElement.style.color = '#ff4444';
+        }
     }
 }
 

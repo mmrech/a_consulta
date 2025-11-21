@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # 30 minutes for better security
 
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    FRONTEND_URL: str = "http://localhost:5173"
 
     RATE_LIMIT_PER_MINUTE: int = 100
     AI_RATE_LIMIT_PER_MINUTE: int = 10
