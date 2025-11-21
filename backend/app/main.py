@@ -53,29 +53,50 @@ async def startup_event():
     # Initialize PDF library if empty
     if not db.pdf_library:
         now = datetime.now(timezone.utc)
+        public_folder = Path(__file__).parent.parent.parent / "public"
 
-        # Try to load Kim2016.pdf from public folder
-        sample_pdf_path = Path(__file__).parent.parent.parent / "public" / "Kim2016.pdf"
+        # List of PDFs to add to library
+        pdfs_to_add = [
+            {
+                "filename": "Kim2016.pdf",
+                "id": "sample_kim2016",
+                "title": "Kim et al. 2016 - Cerebellar Infarction Study",
+                "description": "Clinical study on cerebellar infarction treatment outcomes",
+                "total_pages": 9
+            },
+            # Add more PDFs here:
+            # {
+            #     "filename": "YourPDF.pdf",
+            #     "id": "your_pdf_id",
+            #     "title": "Your PDF Title",
+            #     "description": "Description of your PDF",
+            #     "total_pages": 10
+            # },
+        ]
 
-        if sample_pdf_path.exists():
-            with open(sample_pdf_path, "rb") as f:
-                pdf_data = base64.b64encode(f.read()).decode('utf-8')
-                pdf_data_with_prefix = f"data:application/pdf;base64,{pdf_data}"
+        for pdf_info in pdfs_to_add:
+            pdf_path = public_folder / pdf_info["filename"]
+            
+            if pdf_path.exists():
+                with open(pdf_path, "rb") as f:
+                    pdf_data = base64.b64encode(f.read()).decode('utf-8')
+                    pdf_data_with_prefix = f"data:application/pdf;base64,{pdf_data}"
 
-            library_item = PDFLibraryItem(
-                id="sample_kim2016",
-                title="Kim et al. 2016 - Cerebellar Infarction Study",
-                filename="Kim2016.pdf",
-                pdf_data=pdf_data_with_prefix,
-                total_pages=9,
-                description="Clinical study on cerebellar infarction treatment outcomes",
-                created_at=now
-            )
+                library_item = PDFLibraryItem(
+                    id=pdf_info["id"],
+                    title=pdf_info["title"],
+                    filename=pdf_info["filename"],
+                    pdf_data=pdf_data_with_prefix,
+                    total_pages=pdf_info["total_pages"],
+                    description=pdf_info.get("description"),
+                    created_at=now
+                )
 
-            db.pdf_library[library_item.id] = library_item
-            print(f"✅ Initialized PDF library with {len(db.pdf_library)} items")
-        else:
-            print(f"⚠️ Sample PDF not found at {sample_pdf_path}")
+                db.pdf_library[library_item.id] = library_item
+            else:
+                print(f"⚠️ PDF not found: {pdf_path}")
+
+        print(f"✅ Initialized PDF library with {len(db.pdf_library)} items")
 
 
 # Parse CORS origins from environment variable
