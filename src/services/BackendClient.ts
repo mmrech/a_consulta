@@ -362,6 +362,38 @@ class BackendClient {
       return false; // Backend not available
     }
   }
+
+  /**
+   * Get list of PDFs from library
+   */
+  async getLibraryPDFs(): Promise<any[]> {
+    const response = await this.authenticatedRequest('/api/pdf-library', {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch library PDFs');
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Get specific PDF from library with data
+   */
+  async getLibraryPDF(libraryId: string): Promise<any> {
+    const response = await this.authenticatedRequest(`/api/pdf-library/${libraryId}`, {
+      method: 'GET',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to fetch library PDF');
+    }
+
+    return await response.json();
+  }
 }
 
 export default new BackendClient();

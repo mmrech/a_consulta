@@ -183,6 +183,9 @@ export interface AppState {
    */
   activeCitationIndex: number | null;
 
+  // PDF Library
+  currentLibraryPdfId: string | null;
+
   // ==================== NEW: FIGURE & TABLE EXTRACTION 🖼️📊 ====================
   /**
    * Extracted figures from PDF using operator interception
@@ -214,7 +217,7 @@ export interface AppState {
    * Map from paragraph ID to section ID for fast lookup
    */
   paragraphIdToSectionId?: Map<number, number>;
-  
+
   /**
    * Base64 encoded PDF data for API uploads (needed for citations)
    * Stored when PDF is loaded to enable File Search uploads

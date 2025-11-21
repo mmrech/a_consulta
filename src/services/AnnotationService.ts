@@ -480,40 +480,50 @@ export const AnnotationService = {
     },
 
     /**
-     * Save annotations to localStorage
+     * Save annotations to localStorage (keyed by library PDF ID)
      * Persists all annotations for recovery on page reload
      */
     saveToStorage: (): void => {
         try {
-            const documentName = AppStateManager.getState().documentName || 'unknown';
-            const storageKey = `clinical_annotations_${documentName}`;
+            const libraryId = AppStateManager.getState().currentLibraryPdfId;
+            if (!libraryId) {
+                console.warn('No library PDF ID - annotations not saved');
+                return;
+            }
+            
+            const storageKey = `clinical_annotations_library_${libraryId}`;
             
             const storageData = {
                 version: '1.0',
-                documentName,
+                libraryId,
                 saveDate: new Date().toISOString(),
                 annotations: AnnotationService.annotations,
             };
             
             localStorage.setItem(storageKey, JSON.stringify(storageData));
-            console.log(`💾 Saved ${AnnotationService.annotations.length} annotations to localStorage`);
+            console.log(`💾 Saved ${AnnotationService.annotations.length} annotations for library PDF ${libraryId}`);
         } catch (error) {
             console.error('Failed to save annotations to localStorage:', error);
         }
     },
 
     /**
-     * Load annotations from localStorage
-     * Restores annotations for the current document
+     * Load annotations from localStorage (keyed by library PDF ID)
+     * Restores annotations for the current library PDF
      */
-    loadFromStorage: (documentName?: string): boolean => {
+    loadFromStorage: (libraryId?: string): boolean => {
         try {
-            const docName = documentName || AppStateManager.getState().documentName || 'unknown';
-            const storageKey = `clinical_annotations_${docName}`;
+            const pdfId = libraryId || AppStateManager.getState().currentLibraryPdfId;
+            if (!pdfId) {
+                console.log('No library PDF ID - no annotations to load');
+                return false;
+            }
+            
+            const storageKey = `clinical_annotations_library_${pdfId}`;
             
             const saved = localStorage.getItem(storageKey);
             if (!saved) {
-                console.log('No saved annotations found for this document');
+                console.log('No saved annotations found for this library PDF');
                 return false;
             }
 
@@ -540,7 +550,7 @@ export const AnnotationService = {
                 }
             });
 
-            console.log(`✅ Loaded ${AnnotationService.annotations.length} annotations from localStorage (saved: ${data.saveDate})`);
+            console.log(`✅ Loaded ${AnnotationService.annotations.length} annotations for library PDF ${pdfId} (saved: ${data.saveDate})`);
             return true;
         } catch (error) {
             console.error('Failed to load annotations from localStorage:', error);

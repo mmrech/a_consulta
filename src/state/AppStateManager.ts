@@ -80,7 +80,10 @@ class AppStateManagerClass {
       // Phase 3: Citation Provenance System 🏆
       textChunks: [],
       citationMap: {},
-      activeCitationIndex: null
+      activeCitationIndex: null,
+
+      // PDF Library
+      currentLibraryPdfId: null
     };
 
     this.subscribers = new Set();
@@ -233,7 +236,10 @@ class AppStateManagerClass {
       // Phase 3: Citation Provenance System 🏆
       textChunks: [],
       citationMap: {},
-      activeCitationIndex: null
+      activeCitationIndex: null,
+
+      // PDF Library
+      currentLibraryPdfId: null
     };
 
     if (!preserveSubscribers) {
@@ -249,7 +255,7 @@ class AppStateManagerClass {
   /**
    * Get the PDF base64 data if available.
    * Used for uploading PDFs to File Search for citation functionality.
-   * 
+   *
    * @returns The base64-encoded PDF data string, or null if not available
    */
   getPDFBase64Data(): string | null {
@@ -259,10 +265,10 @@ class AppStateManagerClass {
   /**
    * Test-only method to reset state and clear subscribers.
    * This is explicitly named to indicate it's for testing purposes only.
-   * 
+   *
    * Calls reset(false) to clear both state and subscribers.
    * When preserveSubscribers is false, the reset method creates a new empty Set for subscribers.
-   * 
+   *
    * @internal
    */
   __resetForTesting(): void {

@@ -49,6 +49,7 @@ import SemanticSearchService from './services/SemanticSearchService';
 import AnnotationService from './services/AnnotationService';
 import BackendProxyService from './services/BackendProxyService';
 import SamplePDFService from './services/SamplePDFService';
+import PDFLibraryService from './services/PDFLibraryService';
 import CitationService, { jumpToCitation } from './services/CitationService';
 import LRUCache from './utils/LRUCache';
 import CircuitBreaker from './utils/CircuitBreaker';
@@ -231,55 +232,24 @@ async function searchInPDF() {
  * Set up all event listeners for the application
  */
 function setupEventListeners() {
-    // PDF Upload - Unified to single input
-    const pdfUploadBtn = document.getElementById('pdf-upload-btn');
-    const pdfFile = document.getElementById('pdf-file') as HTMLInputElement;
-
-    if (pdfUploadBtn && pdfFile) {
-        pdfUploadBtn.addEventListener('click', () => {
-            pdfFile.value = '';
-            pdfFile.click();
-        });
-        console.log('✓ PDF upload button wired');
-    } else {
-        console.warn('⚠ PDF upload button or file input not found');
-    }
-
-    if (pdfFile) {
-        pdfFile.addEventListener('change', async (e) => {
-            const file = (e.target as HTMLInputElement).files?.[0];
-            if (file) {
-                console.log('📄 PDF file selected:', file.name);
-                StatusManager.show(`Loading ${file.name}...`, 'info');
+    // PDF Library Dropdown
+    const pdfLibrarySelect = document.getElementById('pdf-library-select') as HTMLSelectElement;
+    
+    if (pdfLibrarySelect) {
+        pdfLibrarySelect.addEventListener('change', async (e) => {
+            const libraryId = (e.target as HTMLSelectElement).value;
+            if (libraryId) {
                 try {
-                    await PDFLoader.loadPDF(file);
-                    (e.target as HTMLInputElement).value = '';
+                    await PDFLibraryService.loadFromLibrary(libraryId);
                 } catch (error) {
-                    console.error('Failed to load PDF:', error);
-                    StatusManager.show(`Failed to load PDF: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+                    console.error('Failed to load PDF from library:', error);
+                    StatusManager.show('Failed to load PDF from library', 'error');
                 }
             }
         });
-        console.log('✓ PDF file input wired');
+        console.log('✓ PDF library dropdown wired');
     } else {
-        console.warn('⚠ PDF file input not found');
-    }
-    
-    // Sample PDF loading button
-    const loadSampleBtn = document.getElementById('load-sample-btn');
-    if (loadSampleBtn) {
-        loadSampleBtn.addEventListener('click', async () => {
-            try {
-                console.log('📚 Loading sample PDF...');
-                await SamplePDFService.loadDefaultSample();
-            } catch (error) {
-                console.error('Failed to load sample PDF:', error);
-                StatusManager.show('Failed to load sample PDF. Check console for details.', 'error');
-            }
-        });
-        console.log('✓ Sample PDF button wired');
-    } else {
-        console.warn('⚠ Sample PDF button not found');
+        console.warn('⚠ PDF library dropdown not found');
     }
 
     // PDF Navigation
@@ -976,6 +946,7 @@ function exposeWindowAPI() {
         AnnotationService,
         BackendProxyService,
         SamplePDFService,
+        PDFLibraryService,
 
         toggleSemanticSearch,
         performSemanticSearch,
@@ -1066,6 +1037,16 @@ async function initializeApp() {
         // Initialize backend authentication
         await AuthManager.initialize();
         console.log('✓ Backend authentication initialized');
+
+        // Populate PDF library dropdown if backend is available
+        if (BackendClient.isAuthenticated()) {
+            try {
+                await PDFLibraryService.populateLibraryDropdown();
+                console.log('✓ PDF library populated');
+            } catch (error) {
+                console.warn('⚠️ Failed to populate PDF library:', error);
+            }
+        }
 
         // 3. Configure PDF.js
         configurePDFJS();

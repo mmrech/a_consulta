@@ -5,7 +5,7 @@ Main application entry point with all routers configured
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
-from .routers import auth, ai, documents, extractions, annotations
+from .routers import auth, documents, extractions, annotations, ai, pdf_library
 from .models import User, db
 from .auth import get_password_hash
 from datetime import datetime, timezone
@@ -19,30 +19,63 @@ app = FastAPI(
 
 # Auto-create demo user on startup (zero-configuration UX)
 @app.on_event("startup")
-async def create_demo_user():
-    """Create a demo user automatically for out-of-the-box functionality"""
+async def startup_event():
+    """Create a demo user and initialize PDF library on startup"""
+    from datetime import datetime, timezone
+    import bcrypt
+    import base64
+    from pathlib import Path
+    from .models import User, PDFLibraryItem, db
+
+    # Create demo user
     demo_email = "demo@example.com"
     demo_password = "demo123"
 
-    # Check if demo user already exists
     if demo_email not in db.users_by_email:
         user_id = db.generate_id()
+        password_hash = bcrypt.hashpw(demo_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         now = datetime.now(timezone.utc)
 
-        demo_user = User(
+        user = User(
             id=user_id,
             email=demo_email,
-            password_hash=get_password_hash(demo_password),
+            password_hash=password_hash,
             created_at=now,
             updated_at=now
         )
 
-        db.users[user_id] = demo_user
+        db.users[user_id] = user
         db.users_by_email[demo_email] = user_id
 
         print(f"✅ Auto-created demo user: {demo_email}")
-    else:
-        print(f"ℹ️  Demo user already exists: {demo_email}")
+
+    # Initialize PDF library if empty
+    if not db.pdf_library:
+        now = datetime.now(timezone.utc)
+
+        # Try to load Kim2016.pdf from public folder
+        sample_pdf_path = Path(__file__).parent.parent.parent / "public" / "Kim2016.pdf"
+
+        if sample_pdf_path.exists():
+            with open(sample_pdf_path, "rb") as f:
+                pdf_data = base64.b64encode(f.read()).decode('utf-8')
+                pdf_data_with_prefix = f"data:application/pdf;base64,{pdf_data}"
+
+            library_item = PDFLibraryItem(
+                id="sample_kim2016",
+                title="Kim et al. 2016 - Cerebellar Infarction Study",
+                filename="Kim2016.pdf",
+                pdf_data=pdf_data_with_prefix,
+                total_pages=9,
+                description="Clinical study on cerebellar infarction treatment outcomes",
+                created_at=now
+            )
+
+            db.pdf_library[library_item.id] = library_item
+            print(f"✅ Initialized PDF library with {len(db.pdf_library)} items")
+        else:
+            print(f"⚠️ Sample PDF not found at {sample_pdf_path}")
+
 
 # Parse CORS origins from environment variable
 cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
@@ -59,10 +92,11 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
-app.include_router(ai.router)
 app.include_router(documents.router)
 app.include_router(extractions.router)
 app.include_router(annotations.router)
+app.include_router(ai.router)
+app.include_router(pdf_library.router)
 
 
 @app.get("/")

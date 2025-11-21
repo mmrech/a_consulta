@@ -313,6 +313,36 @@ class QueryWithCitationsResponse(BaseModel):
     citations: List[CitationQuery] = []
 
 
+class PDFLibraryItem(BaseModel):
+    """PDF Library Item - Fixed set of PDFs available to all users"""
+    id: str
+    title: str
+    filename: str
+    pdf_data: str  # Base64 encoded PDF data
+    total_pages: int
+    description: Optional[str] = None
+    created_at: datetime
+
+
+class PDFLibraryItemResponse(BaseModel):
+    """PDF Library Item response (without PDF data for listing)"""
+    id: str
+    title: str
+    filename: str
+    total_pages: int
+    description: Optional[str] = None
+
+
+class PDFLibraryItemDetail(BaseModel):
+    """PDF Library Item detail (with PDF data)"""
+    id: str
+    title: str
+    filename: str
+    pdf_data: str
+    total_pages: int
+    description: Optional[str] = None
+
+
 class InMemoryDatabase:
     """Simple in-memory database for proof of concept"""
     
@@ -321,6 +351,7 @@ class InMemoryDatabase:
         self.documents: Dict[str, Document] = {}
         self.extractions: Dict[str, Extraction] = {}
         self.annotations: Dict[str, Annotation] = {}
+        self.pdf_library: Dict[str, PDFLibraryItem] = {}  # Fixed library of PDFs
         
         self.users_by_email: Dict[str, str] = {}  # email -> user_id
         self.documents_by_user: Dict[str, List[str]] = {}  # user_id -> [document_ids]

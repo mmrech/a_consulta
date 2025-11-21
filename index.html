@@ -1229,9 +1229,9 @@
         <!-- PDF Panel (Center) -->
         <div class="pdf-panel">
             <div class="pdf-toolbar">
-                <button type="button" id="pdf-upload-btn">📄 Load PDF</button>
-                <input type="file" id="pdf-file" accept=".pdf" style="display:none;" aria-label="Upload PDF file">
-                <button type="button" id="load-sample-btn" title="Load sample PDF from GitHub">📚 Load Sample</button>
+                <select id="pdf-library-select" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #ccc; background: white; font-size: 14px; min-width: 250px;" aria-label="Select PDF from library">
+                    <option value="">Select a PDF from library...</option>
+                </select>
                 <button id="pdf-prev-page" aria-label="Previous Page">◄</button>
                 <span class="toolbar-text">
                     Page <input type="number" id="page-num" value="1" min="1" aria-label="Page number">
