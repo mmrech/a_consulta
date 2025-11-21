@@ -146,7 +146,9 @@ def is_retryable_error(error: Exception) -> bool:
         "429", "quota", "rate", "resource exhausted",
         "503", "service unavailable",
         "500", "internal server error",
-        "timeout", "deadline exceeded"
+        "timeout", "deadline exceeded",
+        "empty response", "finish reason: 2",  # Gemini safety blocks
+        "blocked", "safety"
     ]
     
     return any(pattern in error_str for pattern in retryable_patterns)
