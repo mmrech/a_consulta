@@ -24,14 +24,27 @@ class AuthManager {
       return true;
     }
 
-    // Check if backend is available first
-    const backendAvailable = await BackendClient.healthCheck().catch(() => false);
+    // Check if backend is available first with retry
+    let backendAvailable = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        backendAvailable = await BackendClient.healthCheck();
+        if (backendAvailable) break;
+      } catch (err) {
+        if (attempt === 2) {
+          console.log('ℹ️ Backend not available after 3 attempts - using frontend-only mode');
+          this.initialized = true;
+          return false;
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
     if (!backendAvailable) {
       console.log('ℹ️ Backend not available - using frontend-only mode');
       this.initialized = true;
-      return false; // Backend not available, but app can still work
+      return false;
     }
-
 
     try {
       if (!BackendClient.isAuthenticated()) {

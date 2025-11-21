@@ -49,7 +49,7 @@ import SemanticSearchService from './services/SemanticSearchService';
 import AnnotationService from './services/AnnotationService';
 import BackendProxyService from './services/BackendProxyService';
 import SamplePDFService from './services/SamplePDFService';
-import PDFLibraryService from './services/PDFLibraryService';
+import PDFLibraryService from './services/PDFLibraryService'; // Import is here but will be dynamically imported later if backend is available
 import CitationService, { jumpToCitation } from './services/CitationService';
 import LRUCache from './utils/LRUCache';
 import CircuitBreaker from './utils/CircuitBreaker';
@@ -1036,9 +1036,22 @@ async function initializeApp() {
         FormManager.initialize();
         console.log('✓ Form Manager initialized');
 
-        // Initialize backend authentication
+        // Initialize authentication (auto-login with demo user)
         await AuthManager.initialize();
         console.log('✓ Backend authentication initialized');
+
+        // Initialize PDF library dropdown after authentication
+        const PDFLibraryService = (await import('./services/PDFLibraryService')).default;
+        await PDFLibraryService.populateLibraryDropdown();
+        console.log('✓ PDF library loaded');
+
+        // Initialize Citation UI Enhancer
+        citationUIEnhancer.initialize();
+        console.log('✓ Citation UI Enhancer initialized');
+
+        // Check backend health
+        BackendHealthMonitor.checkHealth();
+
 
         // Test backend connectivity
         try {
@@ -1051,16 +1064,6 @@ async function initializeApp() {
         } catch (error) {
             console.error('❌ Backend is not reachable:', error);
             console.log('💡 Make sure backend workflow is running on port 8080');
-        }
-
-        // Populate PDF library dropdown if backend is available
-        if (BackendClient.isAuthenticated()) {
-            try {
-                await PDFLibraryService.populateLibraryDropdown();
-                console.log('✓ PDF library populated');
-            } catch (error) {
-                console.warn('⚠️ Failed to populate PDF library:', error);
-            }
         }
 
         // 3. Configure PDF.js
