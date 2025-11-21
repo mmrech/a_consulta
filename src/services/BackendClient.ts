@@ -6,8 +6,8 @@
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_API_URL || 
   (typeof window !== 'undefined' && window.location.hostname.includes('replit.dev')
-    ? `${window.location.protocol}//${window.location.hostname.replace('-5000', '-8080')}`.replace(':5000', ':8080')
-    : 'http://0.0.0.0:8080');
+    ? window.location.origin.replace(/:\d+$/, '') + ':8080'
+    : (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8080` : 'http://0.0.0.0:8080'));
 
 interface AuthTokens {
   access_token: string;

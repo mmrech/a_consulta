@@ -104,8 +104,8 @@ class RateLimiter {
 export const BackendProxyService = {
     config: {
         baseURL: typeof window !== 'undefined' && window.location.hostname.includes('replit.dev') 
-            ? `${window.location.protocol}//${window.location.hostname.replace('-5000', '-8080')}`.replace(':5000', ':8080')
-            : 'http://0.0.0.0:8080',  // Backend API base URL
+            ? window.location.origin.replace(/:\d+$/, '') + ':8080'
+            : (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8080` : 'http://0.0.0.0:8080'),
         timeout: 30000,
         retryAttempts: 3,
         retryDelay: 1000,
