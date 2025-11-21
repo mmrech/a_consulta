@@ -289,6 +289,23 @@ export class CitationSidebar {
     }
 
     private render() {
+        const isAuthenticated = citationAPIClient.isAuthenticated()
+        
+        const uploadSection = isAuthenticated ? `
+            <div class="upload-section" id="upload-section">
+                <p>📄 Upload current PDF to enable citations</p>
+                <button class="upload-btn" id="upload-pdf-btn">Upload PDF</button>
+                <div class="upload-status" id="upload-status"></div>
+            </div>
+        ` : `
+            <div class="upload-section" id="upload-section">
+                <div class="empty-state" style="padding: 20px;">
+                    <p style="margin-bottom: 10px;">🔒 Please log in to use citation features</p>
+                    <p style="font-size: 12px; color: #6b7280;">Citation queries require authentication to use AI-powered search.</p>
+                </div>
+            </div>
+        `
+        
         this.container.innerHTML = `
             <button class="citation-toggle" id="citation-toggle-btn">
                 📚 Citations
@@ -299,11 +316,7 @@ export class CitationSidebar {
                 <button class="close-btn" id="close-sidebar-btn">×</button>
             </div>
             
-            <div class="upload-section" id="upload-section">
-                <p>📄 Upload current PDF to enable citations</p>
-                <button class="upload-btn" id="upload-pdf-btn">Upload PDF</button>
-                <div class="upload-status" id="upload-status"></div>
-            </div>
+            ${uploadSection}
             
             <div class="query-section">
                 <div class="query-input-wrapper">
@@ -312,9 +325,9 @@ export class CitationSidebar {
                         class="query-input" 
                         id="query-input" 
                         placeholder="Ask a question about the document..."
-                        disabled
+                        ${!isAuthenticated ? 'disabled' : ''}
                     />
-                    <button class="query-btn" id="query-btn" disabled>Ask</button>
+                    <button class="query-btn" id="query-btn" ${!isAuthenticated ? 'disabled' : ''}>Ask</button>
                 </div>
             </div>
             
@@ -325,7 +338,7 @@ export class CitationSidebar {
             
             <div id="citations-container">
                 <div class="empty-state">
-                    Upload a PDF and ask a question to see citations
+                    ${isAuthenticated ? 'Upload a PDF and ask a question to see citations' : 'Please log in to use citation features'}
                 </div>
             </div>
         `
@@ -379,6 +392,7 @@ export class CitationSidebar {
                 uploadStatus.className = 'upload-status error'
                 uploadStatus.textContent = '⚠️ Please log in to use citation features'
             }
+            console.log('Citation upload skipped: User not authenticated')
             return
         }
         
@@ -432,21 +446,25 @@ export class CitationSidebar {
                     uploadBtn.textContent = 'Uploading...'
                 }
                 
-                const response = await citationAPIClient.uploadPDFForCitations(
-                    documentId,
-                    pdfBase64Data,
-                    fileName
-                )
-                
-                this.fileSearchStoreId = response.file_search_store_id
-                
-                // Cache the file search store ID
-                await citationCache.setFileSearchStore(
-                    documentId,
-                    response.file_search_store_id,
-                    fileName,
-                    currentHash
-                )
+                try {
+                    const response = await citationAPIClient.uploadPDFForCitations(
+                        documentId,
+                        pdfBase64Data,
+                        fileName
+                    )
+                    
+                    this.fileSearchStoreId = response.file_search_store_id
+                    
+                    // Cache the file search store ID
+                    await citationCache.setFileSearchStore(
+                        documentId,
+                        response.file_search_store_id,
+                        fileName,
+                        currentHash
+                    )
+                } catch (apiError: any) {
+                    throw new Error(apiError?.message || 'Failed to upload PDF to server')
+                }
             }
             
             // Update UI on success
@@ -474,10 +492,16 @@ export class CitationSidebar {
                 }
             }, 2000)
             
-        } catch (error) {
+        } catch (error: any) {
+            const errorMessage = error?.message || String(error)
+            
             if (uploadStatus) {
                 uploadStatus.className = 'upload-status error'
-                uploadStatus.textContent = `✗ Upload failed: ${error}`
+                if (errorMessage.includes('log in') || errorMessage.includes('authentication')) {
+                    uploadStatus.textContent = '⚠️ Please log in to use citation features'
+                } else {
+                    uploadStatus.textContent = `✗ Upload failed: ${errorMessage}`
+                }
             }
             
             if (uploadBtn) {
@@ -490,15 +514,30 @@ export class CitationSidebar {
     }
 
     private async handleQuery(query: string) {
-        if (!query.trim() || !this.fileSearchStoreId) {
+        if (!query.trim()) {
             return
         }
         
         // Check authentication
         if (!citationAPIClient.isAuthenticated()) {
+            const answerSection = document.getElementById('answer-section')
             const answerText = document.getElementById('answer-text')
-            if (answerText) {
+            if (answerSection && answerText) {
+                answerSection.style.display = 'block'
                 answerText.textContent = '⚠️ Please log in to use citation features'
+            }
+            console.log('Citation query skipped: User not authenticated')
+            return
+        }
+        
+        if (!this.fileSearchStoreId) {
+            const citationsContainer = document.getElementById('citations-container')
+            if (citationsContainer) {
+                citationsContainer.innerHTML = `
+                    <div class="empty-state">
+                        Please upload a PDF first before querying
+                    </div>
+                `
             }
             return
         }
@@ -522,34 +561,49 @@ export class CitationSidebar {
             const state = this.appState.getState()
             const documentId = state.documentName ? `doc-${state.documentName.replace(/\s+/g, '-')}` : 'doc-' + Date.now()
             
-            const response = await citationAPIClient.queryWithCitations(
-                documentId,
-                this.fileSearchStoreId,
-                query
-            )
-            
-            // Display answer
-            if (answerSection && answerText) {
-                answerSection.style.display = 'block'
-                answerText.textContent = response.answer
+            try {
+                const response = await citationAPIClient.queryWithCitations(
+                    documentId,
+                    this.fileSearchStoreId,
+                    query
+                )
+                
+                // Display answer
+                if (answerSection && answerText) {
+                    answerSection.style.display = 'block'
+                    answerText.textContent = response.answer
+                }
+                
+                // Display citations
+                this.currentCitations = response.citations.map((c, i) => ({
+                    ...c,
+                    id: `citation-${i + 1}`
+                }))
+                
+                this.renderCitations()
+            } catch (apiError: any) {
+                throw new Error(apiError?.message || 'Failed to query citations from server')
             }
             
-            // Display citations
-            this.currentCitations = response.citations.map((c, i) => ({
-                ...c,
-                id: `citation-${i + 1}`
-            }))
+        } catch (error: any) {
+            const errorMessage = error?.message || String(error)
             
-            this.renderCitations()
-            
-        } catch (error) {
             if (citationsContainer) {
                 citationsContainer.innerHTML = `
                     <div class="empty-state">
-                        ✗ Failed to get citations: ${error}
+                        ${errorMessage.includes('log in') || errorMessage.includes('authentication') 
+                            ? '⚠️ Please log in to use citation features' 
+                            : `✗ Failed to get citations: ${errorMessage}`
+                        }
                     </div>
                 `
             }
+            
+            if (answerSection && answerText && (errorMessage.includes('log in') || errorMessage.includes('authentication'))) {
+                answerSection.style.display = 'block'
+                answerText.textContent = '⚠️ Please log in to use citation features'
+            }
+            
             console.error('Failed to query with citations:', error)
             
         } finally {

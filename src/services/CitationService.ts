@@ -590,7 +590,7 @@ export interface SearchResult {
  */
 export const searchText = async (searchText: string, citationMap?: CitationMap): Promise<SearchResult[]> => {
     const results: SearchResult[] = []
-    const map = citationMap || CitationService.getInstance().citationMap
+    const map = citationMap || CitationServiceClass.getInstance().citationMap
     
     if (!map || Object.keys(map).length === 0) {
         console.warn('No citation map available for search')
@@ -600,8 +600,8 @@ export const searchText = async (searchText: string, citationMap?: CitationMap):
     const normalizedSearch = searchText.toLowerCase().trim()
     
     // Search through all citations
-    Object.values(map).forEach(citation => {
-        if (citation.sentence.toLowerCase().includes(normalizedSearch)) {
+    Object.values(map).forEach((citation: any) => {
+        if (citation.sentence && citation.sentence.toLowerCase().includes(normalizedSearch)) {
             results.push({
                 text: citation.sentence,
                 pageNumber: citation.pageNum,
