@@ -41,6 +41,10 @@ class GeminiClient:
             generation_config=generation_config
         )
         
+        # Handle empty responses (finish_reason 2 = blocked/truncated)
+        if not response.candidates or not response.candidates[0].content.parts:
+            raise ValueError(f"Empty response from Gemini. Finish reason: {response.candidates[0].finish_reason if response.candidates else 'unknown'}")
+        
         return response.text
     
     def generate_vision(
@@ -77,19 +81,23 @@ class AnthropicClient:
         max_output_tokens: int = 2048
     ) -> str:
         """Generate text response from Claude"""
-        system_message = ""
+        system_message = None
         if require_json:
             system_message = "You must respond with valid JSON only. Do not include markdown fences or any text outside the JSON object."
         
         messages = [{"role": "user", "content": prompt}]
         
-        response = self.client.messages.create(
-            model=self.model_name,
-            max_tokens=max_output_tokens,
-            temperature=temperature,
-            system=system_message if system_message else None,
-            messages=messages
-        )
+        # Build kwargs, only include system if it's not None
+        kwargs = {
+            "model": self.model_name,
+            "max_tokens": max_output_tokens,
+            "temperature": temperature,
+            "messages": messages
+        }
+        if system_message is not None:
+            kwargs["system"] = system_message
+        
+        response = self.client.messages.create(**kwargs)
         
         return response.content[0].text
     
