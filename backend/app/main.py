@@ -6,12 +6,42 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .routers import auth, ai, documents, extractions, annotations
+from .models import User, db
+from .auth import get_password_hash
+from datetime import datetime, timezone
 
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description="Backend API for La Consulta Clinical Extractor - Secure AI proxy and data management"
 )
+
+# Auto-create demo user on startup (zero-configuration UX)
+@app.on_event("startup")
+async def create_demo_user():
+    """Create a demo user automatically for out-of-the-box functionality"""
+    demo_email = "demo@example.com"
+    demo_password = "demo123"
+    
+    # Check if demo user already exists
+    if demo_email not in db.users_by_email:
+        user_id = db.generate_id()
+        now = datetime.now(timezone.utc)
+        
+        demo_user = User(
+            id=user_id,
+            email=demo_email,
+            password_hash=get_password_hash(demo_password),
+            created_at=now,
+            updated_at=now
+        )
+        
+        db.users[user_id] = demo_user
+        db.users_by_email[demo_email] = user_id
+        
+        print(f"✅ Auto-created demo user: {demo_email}")
+    else:
+        print(f"ℹ️  Demo user already exists: {demo_email}")
 
 app.add_middleware(
     CORSMiddleware,

@@ -8,12 +8,12 @@ import BackendClient from './BackendClient';
 import StatusManager from '../utils/status';
 
 /**
- * Default user credentials - MUST be set via environment variables for security
- * VITE_DEFAULT_USER_EMAIL and VITE_DEFAULT_USER_PASSWORD must be defined in .env.local
+ * Default demo user credentials (auto-created by backend on startup)
+ * No configuration required - works out of the box!
  */
 const DEFAULT_USER = {
-  email: import.meta.env.VITE_DEFAULT_USER_EMAIL,
-  password: import.meta.env.VITE_DEFAULT_USER_PASSWORD
+  email: 'demo@example.com',
+  password: 'demo123'
 };
 
 class AuthManager {
@@ -32,13 +32,6 @@ class AuthManager {
       return false; // Backend not available, but app can still work
     }
 
-    // Validate environment variables are set
-    if (!DEFAULT_USER.email || !DEFAULT_USER.password) {
-      console.warn('⚠️ Backend credentials not configured (VITE_DEFAULT_USER_EMAIL/PASSWORD missing)');
-      console.log('ℹ️ Continuing in frontend-only mode');
-      this.initialized = true;
-      return false; // Missing credentials, but app can still work
-    }
 
     try {
       if (!BackendClient.isAuthenticated()) {
