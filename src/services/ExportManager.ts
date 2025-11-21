@@ -21,6 +21,7 @@ import AppStateManager from '../state/AppStateManager';
 import FormManager from '../forms/FormManager';
 import ExtractionTracker from '../data/ExtractionTracker';
 import StatusManager from '../utils/status';
+import citationAuditTrail from './CitationAuditTrail';
 import type { TextChunk, Citation } from './CitationService';
 
 /**
@@ -87,16 +88,31 @@ const ExportManager = {
 
     /**
      * Export extraction data as CSV
-     * Includes field name, text, page, coordinates, and timestamp
+     * Includes field name, text, page, coordinates, timestamp, and citations
      */
     exportCSV: function() {
-        let csv = 'Field,Text,Page,X,Y,Width,Height,Timestamp\n';
+        const state = AppStateManager.getState();
+        let csv = 'Field,Text,Page,X,Y,Width,Height,Timestamp,Citation Count,Citation Pages,Citation Text\n';
+        
         ExtractionTracker.getExtractions().forEach(ext => {
-            csv += `"${ext.fieldName}","${ext.text.replace(/"/g, '""')}",${ext.page},${ext.coordinates.x},${ext.coordinates.y},${ext.coordinates.width},${ext.coordinates.height},"${ext.timestamp}"\n`;
+            // Get citation details
+            const citationCount = ext.citationCount || 0;
+            const citationPages = ext.citationIndices?.map(idx => {
+                const citation = state.citationMap?.[idx];
+                return citation?.pageNum || '?';
+            }).join('; ') || 'N/A';
+            
+            const citationTexts = ext.citationIndices?.map(idx => {
+                const citation = state.citationMap?.[idx];
+                return citation?.sentence?.substring(0, 50) || '';
+            }).join(' | ') || 'N/A';
+            
+            csv += `"${ext.fieldName}","${ext.text.replace(/"/g, '""')}",${ext.page},${ext.coordinates.x},${ext.coordinates.y},${ext.coordinates.width},${ext.coordinates.height},"${ext.timestamp}",${citationCount},"${citationPages}","${citationTexts.replace(/"/g, '""')}"\n`;
         });
+        
         const blob = new Blob([csv], { type: 'text/csv' });
         this.downloadFile(blob, `extraction_${Date.now()}.csv`);
-        StatusManager.show('CSV export successful (Preview)', 'success');
+        StatusManager.show('CSV export successful with citations', 'success');
     },
 
     /**
@@ -154,12 +170,18 @@ const ExportManager = {
         const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
         XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
 
-        // SHEET 2: Extractions (Detailed)
+        // SHEET 2: Extractions (Detailed with Citations)
         const extractionsData: (string | number)[][] = [
-            ['Field Name', 'Extracted Text', 'Page', 'Method', 'X', 'Y', 'Width', 'Height', 'Timestamp']
+            ['Field Name', 'Extracted Text', 'Page', 'Method', 'X', 'Y', 'Width', 'Height', 'Timestamp', 'Citations', 'Citation Sources']
         ];
 
         extractions.forEach(ext => {
+            const citationCount = ext.citationCount || 0;
+            const citationSources = ext.citationIndices?.map(idx => {
+                const citation = state.citationMap?.[idx];
+                return citation ? `[${idx}] p.${citation.pageNum}: "${citation.sentence.substring(0, 50)}..."` : `[${idx}]`;
+            }).join(' | ') || 'None';
+            
             extractionsData.push([
                 ext.fieldName,
                 ext.text,
@@ -169,7 +191,9 @@ const ExportManager = {
                 ext.coordinates.y,
                 ext.coordinates.width,
                 ext.coordinates.height,
-                new Date(ext.timestamp).toLocaleString()
+                new Date(ext.timestamp).toLocaleString(),
+                citationCount,
+                citationSources
             ]);
         });
 
@@ -202,6 +226,42 @@ const ExportManager = {
         const statsSheet = XLSX.utils.aoa_to_sheet(statsData);
         XLSX.utils.book_append_sheet(workbook, statsSheet, 'Statistics');
 
+        // SHEET 4: Citation Audit Trail
+        const citationStats = ExtractionTracker.getCitationStats();
+        const citationAuditData: (string | number)[][] = [
+            ['Citation Audit Report'],
+            ['Generated:', new Date().toLocaleString()],
+            [''],
+            ['Summary'],
+            ['Total Citations Used:', citationStats.totalCitations],
+            ['Fields with Citation Backing:', citationStats.fieldsWithCitations],
+            ['Average Citations per Field:', citationStats.avgCitationsPerField],
+            [''],
+            ['Detailed Citation Usage'],
+            ['Field Name', 'Citation Count', 'Citation Indices', 'Pages Referenced']
+        ];
+
+        // Add rows for each extraction with citations
+        extractions.forEach(ext => {
+            if (ext.citationCount && ext.citationCount > 0) {
+                const indices = ext.citationIndices?.join(', ') || '';
+                const pages = ext.citationIndices?.map(idx => {
+                    const citation = state.citationMap?.[idx];
+                    return citation?.pageNum || '?';
+                }).join(', ') || '';
+                
+                citationAuditData.push([
+                    ext.fieldName,
+                    ext.citationCount || 0,
+                    indices,
+                    pages
+                ]);
+            }
+        });
+
+        const citationAuditSheet = XLSX.utils.aoa_to_sheet(citationAuditData);
+        XLSX.utils.book_append_sheet(workbook, citationAuditSheet, 'Citation Audit');
+
         // Generate Excel file and trigger download
         const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
         const blob = new Blob([excelBuffer], {
@@ -209,7 +269,7 @@ const ExportManager = {
         });
 
         this.downloadFile(blob, `clinical_extraction_${Date.now()}.xlsx`);
-        StatusManager.show('✓ Excel file exported successfully!', 'success');
+        StatusManager.show('✓ Excel file exported with citations and audit trail!', 'success');
     },
 
     /**
@@ -280,6 +340,28 @@ const ExportManager = {
     },
 
     /**
+     * Export citation audit trail as JSON
+     * For regulatory compliance and audit purposes
+     */
+    exportCitationAuditJSON: function() {
+        const blob = citationAuditTrail.exportJSON();
+        this.downloadFile(blob, `citation_audit_${Date.now()}.json`);
+        StatusManager.show('✓ Citation audit trail exported (JSON)', 'success');
+        citationAuditTrail.logExport('citation_audit_json', citationAuditTrail.getAllLogs().length);
+    },
+
+    /**
+     * Export citation audit trail as CSV
+     * For regulatory compliance and audit purposes
+     */
+    exportCitationAuditCSV: function() {
+        const blob = citationAuditTrail.exportCSV();
+        this.downloadFile(blob, `citation_audit_${Date.now()}.csv`);
+        StatusManager.show('✓ Citation audit trail exported (CSV)', 'success');
+        citationAuditTrail.logExport('citation_audit_csv', citationAuditTrail.getAllLogs().length);
+    },
+
+    /**
      * Download file helper
      * Creates temporary download link and triggers download
      * @private
@@ -321,6 +403,14 @@ export function exportAnnotatedPDF() {
 
 export function exportProvenance() {
     ExportManager.exportProvenance();
+}
+
+export function exportCitationAuditJSON() {
+    ExportManager.exportCitationAuditJSON();
+}
+
+export function exportCitationAuditCSV() {
+    ExportManager.exportCitationAuditCSV();
 }
 
 export default ExportManager;

@@ -4,7 +4,7 @@
  */
 
 import { citationAPIClient } from '../services/CitationAPIClient'
-import { CitationService, searchText, scrollToCitation } from '../services/CitationService'
+import CitationService from '../services/CitationService'
 import AppStateManager from '../state/AppStateManager'
 import { citationCache, CitationIndexedDBCache } from '../services/CitationIndexedDBCache'
 
@@ -21,7 +21,7 @@ export class CitationSidebar {
     private container: HTMLElement
     private isVisible: boolean = false
     private currentCitations: Citation[] = []
-    private citationService: CitationService
+    private citationService: typeof CitationService
     private appState: typeof AppStateManager
     private fileSearchStoreId: string | null = null
 
@@ -35,7 +35,7 @@ export class CitationSidebar {
             document.body.appendChild(container)
         }
         this.container = container
-        this.citationService = CitationService.getInstance()
+        this.citationService = CitationService
         this.appState = AppStateManager
         
         this.setupStyles()

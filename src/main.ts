@@ -58,7 +58,9 @@ import {
     exportExcel,
     exportAudit,
     exportAnnotatedPDF,
-    exportProvenance
+    exportProvenance,
+    exportCitationAuditJSON,
+    exportCitationAuditCSV
 } from './services/ExportManager';
 import FigureExtractor from './services/FigureExtractor';
 import TableExtractor from './services/TableExtractor';
@@ -68,6 +70,8 @@ import BackendHealthMonitor from './services/BackendHealthMonitor';
 import BackendClient from './services/BackendClient';
 import { getCitationSidebar } from './components/CitationSidebar';
 import { citationAPIClient } from './services/CitationAPIClient';
+import citationAuditTrail from './services/CitationAuditTrail';
+import citationUIEnhancer from './services/CitationUIEnhancer';
 
 // Utilities
 import {
@@ -124,6 +128,13 @@ function setupDependencies() {
 
     // BackendProxyService needs BackendClient for auth header injection
     BackendProxyService.setBackendClient(BackendClient);
+
+    // Initialize Citation UI Enhancer for badges and tooltips
+    // This should run after other services are initialized
+    setTimeout(() => {
+        citationUIEnhancer.initialize();
+        console.log('✓ Citation UI Enhancer initialized');
+    }, 100);
 }
 
 // ==================== PDF.JS CONFIGURATION ====================
@@ -924,13 +935,15 @@ function exposeWindowAPI() {
         handleImageAnalysis,
         handleDeepAnalysis,
 
-        // Export Functions (6)
+        // Export Functions (8)
         exportJSON,
         exportCSV,
         exportExcel,
         exportAudit,
         exportAnnotatedPDF,
         exportProvenance,
+        exportCitationAuditJSON,
+        exportCitationAuditCSV,
 
         // Search Functions (4)
         toggleSearchInterface,
@@ -987,8 +1000,10 @@ function exposeWindowAPI() {
         FormManager,
         StatusManager,
 
-        // Citation functions
+        // Citation functions and services
         CitationService,
+        citationAuditTrail,
+        citationUIEnhancer,
         highlightCitation: highlightCitationOnPDF,
 
         triggerCrashStateSave,

@@ -43,6 +43,7 @@ interface ExtractionInput {
     page: number;
     coordinates: any;
     method: string;
+    citationIndices?: number[];
 }
 
 interface ExtractionTrackerType {
@@ -65,6 +66,7 @@ interface ExtractionTrackerType {
     saveToStorage: () => void;
     loadFromStorage: () => void;
     getExtractions: () => Extraction[];
+    getCitationStats: () => { totalCitations: number; fieldsWithCitations: number; avgCitationsPerField: number };
 }
 
 /**
@@ -140,7 +142,9 @@ const ExtractionTracker: ExtractionTrackerType = {
             id: `ext_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             timestamp: new Date().toISOString(),
             ...sanitizedData,
-            method: sanitizedData.method as ExtractionMethod
+            method: sanitizedData.method as ExtractionMethod,
+            citationIndices: data.citationIndices || [],
+            citationCount: (data.citationIndices || []).length
         };
 
         // Store extraction in array and map
@@ -181,9 +185,15 @@ const ExtractionTracker: ExtractionTrackerType = {
             ? extraction.text.substring(0, 80) + '...'
             : extraction.text;
 
+        // Citation badge if citations exist
+        const citationBadge = extraction.citationCount && extraction.citationCount > 0
+            ? `<span class="citation-badge" title="${extraction.citationCount} citation(s)">${extraction.citationCount} 📚</span>`
+            : '';
+
         // Build entry HTML with sanitized content
         entry.innerHTML = `
             <span class="field-label">${SecurityUtils.escapeHtml(extraction.fieldName)}</span>
+            ${citationBadge}
             <span class="extracted-text">"${SecurityUtils.escapeHtml(truncatedText)}"</span>
             <div class="metadata">
                 Page ${extraction.page} | ${extraction.method} | ${new Date(extraction.timestamp).toLocaleTimeString()}
@@ -321,6 +331,22 @@ const ExtractionTracker: ExtractionTrackerType = {
      */
     getExtractions: function(): Extraction[] {
         return this.extractions;
+    },
+
+    /**
+     * Get citation statistics across all extractions
+     * @returns Object with citation statistics
+     */
+    getCitationStats: function(): { totalCitations: number; fieldsWithCitations: number; avgCitationsPerField: number } {
+        const totalCitations = this.extractions.reduce((sum, ext) => sum + (ext.citationCount || 0), 0);
+        const fieldsWithCitations = this.extractions.filter(ext => (ext.citationCount || 0) > 0).length;
+        const avgCitationsPerField = fieldsWithCitations > 0 ? totalCitations / fieldsWithCitations : 0;
+
+        return {
+            totalCitations,
+            fieldsWithCitations,
+            avgCitationsPerField: Math.round(avgCitationsPerField * 10) / 10
+        };
     }
 };
 

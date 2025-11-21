@@ -77,6 +77,10 @@ export interface Extraction {
   method: ExtractionMethod;
   /** Name of the source document */
   documentName: string;
+  /** Citation indices that support this extraction (optional) */
+  citationIndices?: number[];
+  /** Number of citations backing this extraction (optional) */
+  citationCount?: number;
 }
 
 // ==================== APP STATE TYPES ====================
