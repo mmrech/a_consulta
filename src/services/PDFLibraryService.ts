@@ -21,26 +21,44 @@ const PDFLibraryService = {
    */
   async populateLibraryDropdown(): Promise<void> {
     const dropdown = document.getElementById('pdf-library-select') as HTMLSelectElement;
-    if (!dropdown) return;
+    if (!dropdown) {
+      console.warn('⚠️ PDF library dropdown element not found');
+      return;
+    }
 
     try {
+      console.log('📚 Loading PDF library...');
       const pdfs: LibraryPDF[] = await BackendClient.getLibraryPDFs();
+      
+      console.log('📚 Received PDFs from backend:', pdfs);
       
       // Clear existing options except the first (placeholder)
       dropdown.innerHTML = '<option value="">Select a PDF from library...</option>';
+      
+      if (!pdfs || pdfs.length === 0) {
+        console.warn('⚠️ No PDFs found in library');
+        dropdown.innerHTML = '<option value="">No PDFs in library yet</option>';
+        return;
+      }
       
       // Add library PDFs
       pdfs.forEach(pdf => {
         const option = document.createElement('option');
         option.value = pdf.id;
-        option.textContent = pdf.title;
+        option.textContent = `${pdf.title} (${pdf.total_pages} pages)`;
         dropdown.appendChild(option);
       });
       
       console.log(`✅ Loaded ${pdfs.length} PDFs into library dropdown`);
     } catch (error) {
-      console.error('Failed to load PDF library:', error);
-      StatusManager.show('Failed to load PDF library', 'error');
+      console.error('❌ Failed to load PDF library:', error);
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
+      dropdown.innerHTML = '<option value="">Failed to load library</option>';
+      StatusManager.show('Could not load PDF library - check console', 'warning');
     }
   },
 

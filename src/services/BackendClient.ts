@@ -4,7 +4,7 @@
  * Handles authentication, token management, and API requests
  */
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_API_URL || 
+const BACKEND_URL = import.meta.env.VITE_BACKEND_API_URL ||
   (typeof window !== 'undefined' && window.location.hostname.includes('replit.dev')
     ? window.location.origin.replace(/:\d+$/, '') + ':8080'
     : (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8080` : 'http://0.0.0.0:8080'));
@@ -364,19 +364,32 @@ class BackendClient {
   }
 
   /**
-   * Get list of PDFs from library
+   * Get all PDFs in the library
    */
   async getLibraryPDFs(): Promise<any[]> {
-    const response = await this.authenticatedRequest('/api/pdf-library', {
-      method: 'GET',
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Failed to fetch library PDFs');
+    try {
+      console.log('🔍 Fetching PDF library from backend...');
+      const response = await this.authenticatedRequest('/api/pdf-library', {
+        method: 'GET',
+      });
+      if (!response.ok) {
+        let errorDetail = 'Failed to fetch library PDFs';
+        try {
+          const error = await response.json();
+          errorDetail = error.detail || error.message || errorDetail;
+        } catch {
+          const text = await response.text().catch(() => '');
+          errorDetail = text || errorDetail;
+        }
+        throw new Error(errorDetail);
+      }
+      const data = await response.json();
+      console.log('✅ PDF library response:', data);
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error('❌ Failed to fetch PDF library:', error);
+      throw error;
     }
-
-    return await response.json();
   }
 
   /**
