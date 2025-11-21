@@ -1504,6 +1504,62 @@
         <div class="spinner"></div>
     </div>
 
+    <script>
+        /**
+         * Toggle panel collapse/expand state
+         * Saves state to localStorage so preferences persist
+         */
+        function togglePanel(panelName) {
+            const panelId = panelName + '-panel-container';
+            const panel = document.getElementById(panelId);
+            
+            if (!panel) {
+                console.error(`Panel not found: ${panelId}`);
+                return;
+            }
+
+            // Toggle collapsed class
+            panel.classList.toggle('collapsed');
+
+            // Update button text
+            const btn = panel.querySelector('.panel-toggle');
+            if (btn) {
+                btn.textContent = panel.classList.contains('collapsed') ? '+' : '−';
+            }
+
+            // Save state to localStorage
+            const panelStates = JSON.parse(localStorage.getItem('panelStates') || '{}');
+            panelStates[panelName] = panel.classList.contains('collapsed');
+            localStorage.setItem('panelStates', JSON.stringify(panelStates));
+        }
+
+        /**
+         * Restore panel states from localStorage on page load
+         */
+        function restorePanelStates() {
+            const panelStates = JSON.parse(localStorage.getItem('panelStates') || '{}');
+            
+            ['form', 'pdf', 'trace'].forEach(panelName => {
+                if (panelStates[panelName]) {
+                    const panelId = panelName + '-panel-container';
+                    const panel = document.getElementById(panelId);
+                    if (panel) {
+                        panel.classList.add('collapsed');
+                        const btn = panel.querySelector('.panel-toggle');
+                        if (btn) btn.textContent = '+';
+                    }
+                }
+            });
+        }
+
+        // Restore panel states when page loads
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', restorePanelStates);
+        } else {
+            restorePanelStates();
+        }
+    </script>
+
     <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
