@@ -59,8 +59,8 @@ localPort = 8080
 externalPort = 8080
 
 [[ports]]
-localPort = 38079
-externalPort = 3001
+localPort = 40427
+externalPort = 3002
 
 [deployment]
 deploymentTarget = "static"
