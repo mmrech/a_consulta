@@ -197,11 +197,60 @@ export const PDFRenderer = {
                 // Disable font ligatures for better selection accuracy
                 span.style.fontFeatureSettings = '"liga" 0';
                 
-                // Improve selectability
+                // ==================== ENHANCED TEXT LAYER STYLING ====================
+                // Improve selectability and visibility
                 span.style.pointerEvents = 'auto';
                 span.style.cursor = 'text';
+                span.style.userSelect = 'text';
+                span.style.WebkitUserSelect = 'text';
+                
+                // Increase base opacity for better visibility (0.2 → 0.4)
+                span.style.opacity = '0.4';
+                span.style.color = 'transparent';
+                span.style.backgroundColor = 'transparent';
+                span.style.textShadow = 'none';
+                
+                // Accessibility attributes
                 span.setAttribute('role', 'text');
                 span.setAttribute('aria-label', item.str);
+                
+                // ==================== HOVER EFFECTS ====================
+                // Add subtle text shadow on hover to reveal text location
+                span.addEventListener('mouseenter', () => {
+                    span.style.opacity = '0.6';
+                    span.style.textShadow = '0 0 2px rgba(100, 150, 255, 0.5)';
+                    span.style.backgroundColor = 'rgba(255, 255, 0, 0.08)';
+                });
+                
+                span.addEventListener('mouseleave', () => {
+                    if (!span.classList.contains('selected')) {
+                        span.style.opacity = '0.4';
+                        span.style.textShadow = 'none';
+                        span.style.backgroundColor = 'transparent';
+                    }
+                });
+                
+                // ==================== ACTIVE SELECTION FEEDBACK ====================
+                // Highlight during selection
+                span.addEventListener('mousedown', () => {
+                    span.style.opacity = '0.7';
+                    span.style.backgroundColor = 'rgba(255, 255, 0, 0.15)';
+                });
+                
+                span.addEventListener('mouseup', () => {
+                    // Check if text is actually selected
+                    const selection = window.getSelection();
+                    if (selection && selection.toString().length > 0) {
+                        span.classList.add('selected');
+                        span.style.opacity = '0.8';
+                        span.style.backgroundColor = 'rgba(255, 200, 0, 0.25)';
+                        span.style.color = 'rgba(100, 80, 0, 0.3)';
+                    } else {
+                        span.classList.remove('selected');
+                        span.style.opacity = '0.4';
+                        span.style.backgroundColor = 'transparent';
+                    }
+                });
 
                 // Calculate transform using PDF.js utility
                 // Transform matrix: [scaleX, skewY, skewX, scaleY, translateX, translateY]
