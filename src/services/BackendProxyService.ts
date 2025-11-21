@@ -103,7 +103,7 @@ class RateLimiter {
 
 export const BackendProxyService = {
     config: {
-        baseURL: '',
+        baseURL: 'http://0.0.0.0:8080',  // Backend API base URL
         timeout: 30000,
         retryAttempts: 3,
         retryDelay: 1000,
@@ -259,7 +259,7 @@ export const BackendProxyService = {
             if (attempt < (BackendProxyService.config.retryAttempts || 3)) {
                 const delay = (BackendProxyService.config.retryDelay || 1000) * Math.pow(2, attempt - 1);
                 console.warn(`⚠️ Request failed (attempt ${attempt}), retrying in ${delay}ms...`);
-                
+
                 await new Promise(resolve => setTimeout(resolve, delay));
                 return BackendProxyService.executeRequest<T>(request, attempt + 1);
             }
@@ -477,7 +477,7 @@ export const BackendProxyService = {
      */
     healthCheck: async (url?: string): Promise<boolean> => {
         const checkURL = url || `${BackendProxyService.config.baseURL}/api/health`;
-        
+
         try {
             const response = await BackendProxyService.get(checkURL);
             return response.status >= 200 && response.status < 300;
