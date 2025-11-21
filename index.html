@@ -893,6 +893,91 @@
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
+
+        /* Panel Collapse/Expand Styles */
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+
+        .panel-toggle {
+            background: var(--primary-blue);
+            color: white;
+            border: none;
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            border-radius: var(--border-radius-md);
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+        }
+
+        .panel-toggle:hover {
+            background: var(--primary-blue-dark);
+            transform: scale(1.1);
+        }
+
+        /* Collapsed panel states */
+        .form-panel.collapsed {
+            width: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            min-width: 0 !important;
+        }
+
+        .pdf-panel.collapsed {
+            width: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            min-width: 0 !important;
+        }
+
+        .trace-panel.collapsed {
+            width: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            min-width: 0 !important;
+            border: none !important;
+        }
+
+        /* Adjust layout when panels are collapsed */
+        .main-container.form-collapsed .form-panel { width: 0; }
+        .main-container.pdf-collapsed .pdf-panel { width: 0; }
+        .main-container.trace-collapsed .trace-panel { width: 0; }
+
+        /* Smooth transitions */
+        .form-panel, .pdf-panel, .trace-panel {
+            transition: all 0.3s ease;
+        }
+
+        /* Panel header styling */
+        .form-panel .panel-header {
+            margin-bottom: var(--spacing-md);
+            padding-bottom: var(--spacing-md);
+            border-bottom: 1px solid var(--gray-300);
+        }
+
+        .trace-panel .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-md);
+            padding-bottom: var(--spacing-md);
+            border-bottom: 1px solid var(--gray-300);
+        }
+
+        .pdf-panel .panel-header {
+            display: flex;
+            justify-content: flex-end;
+        }
     </style>
 <script type="importmap">
 {
@@ -906,8 +991,11 @@
 <body>
     <div class="main-container">
         <!-- Form Panel (Left) -->
-        <div class="form-panel">
-            <h1>Clinical Study Master Extraction</h1>
+        <div class="form-panel" id="form-panel-container">
+            <div class="panel-header">
+                <h1>Clinical Study Master Extraction</h1>
+                <button type="button" class="panel-toggle" onclick="togglePanel('form')" title="Collapse form panel">−</button>
+            </div>
             <p class="subtitle">
                 Click a field, then highlight text in the PDF to extract with full traceability.
             </p>
@@ -1227,7 +1315,11 @@
         </div>
 
         <!-- PDF Panel (Center) -->
-        <div class="pdf-panel">
+        <div class="pdf-panel" id="pdf-panel-container">
+            <div class="panel-header" style="background: var(--gray-800); padding: var(--spacing-sm) var(--spacing-lg);">
+                <button type="button" class="panel-toggle" onclick="togglePanel('pdf')" title="Collapse PDF panel" style="margin-left: auto;">−</button>
+            </div>
+            <div class="pdf-panel-content">
             <div class="pdf-toolbar">
                 <select id="pdf-library-select" style="padding: 6px 12px; border-radius: 4px; border: 1px solid #ccc; background: white; font-size: 14px; min-width: 250px;" aria-label="Select PDF from library">
                     <option value="">Select a PDF from library...</option>
@@ -1328,10 +1420,15 @@
                     <!-- PDF pages will be rendered here -->
                 </div>
             </div>
+            </div>
         </div>
 
         <!-- Trace Panel (Right) -->
-        <div class="trace-panel">
+        <div class="trace-panel" id="trace-panel-container">
+            <div class="panel-header">
+                <h3 style="margin: 0;">Extraction Trace</h3>
+                <button type="button" class="panel-toggle" onclick="togglePanel('trace')" title="Collapse trace panel">−</button>
+            </div>
             <h2 class="trace-title">Extraction Trace Log</h2>
             <div class="markdown-section">
                 <h4>📝 Markdown Assistant</h4>
