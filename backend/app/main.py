@@ -79,20 +79,25 @@ async def startup_event():
 
 
 # Parse CORS origins from environment variable
-cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
-cors_origins = cors_origins_str.split(",") if cors_origins_str != "*" else ["*"]
+cors_origins_env = os.getenv("CORS_ORIGINS", "")
+allowed_origins = [settings.FRONTEND_URL]
+if cors_origins_env:
+    if cors_origins_env == "*":
+        allowed_origins = ["*"]
+    else:
+        allowed_origins.extend([origin.strip() for origin in cors_origins_env.split(",") if origin.strip()])
 
 # Get current Replit URL if running on Replit
 replit_url = None
 if os.getenv('REPL_SLUG') and os.getenv('REPL_OWNER'):
     replit_url = f"https://{os.getenv('REPL_SLUG')}.{os.getenv('REPL_OWNER')}.repl.co"
 
-allowed_origins = [
+allowed_origins.extend([
     "http://localhost:5173",
     "http://localhost:5000",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5000",
-] + settings.CORS_ORIGINS
+])
 
 if replit_url:
     allowed_origins.append(replit_url)
@@ -105,7 +110,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    allow_origin_regex=r"https://.*\.replit\.dev" if cors_origins == ["*"] else None,
+    allow_origin_regex=r"https://.*\.replit\.dev" if cors_origins_env == "*" else None,
 )
 
 app.include_router(auth.router)
