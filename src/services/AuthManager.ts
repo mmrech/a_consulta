@@ -26,25 +26,29 @@ class AuthManager {
 
     // Check if backend is available first with retry (longer delays for startup)
     let backendAvailable = false;
-    const maxAttempts = 8;
-    const retryDelays = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000]; // Progressive backoff
+    const maxAttempts = 3; // Reduced attempts for faster initial check
+    const retryDelays = [100, 200, 300]; // Shorter delays for initial attempts
+    
+    console.log('🔐 Starting backend health checks...');
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        console.log(`🔍 Checking backend health (attempt ${attempt + 1}/${maxAttempts})...`);
+        console.log(`🔍 Health check attempt ${attempt + 1}/${maxAttempts}...`);
         backendAvailable = await BackendClient.healthCheck();
+        console.log(`📊 Health check result: ${backendAvailable ? 'HEALTHY' : 'UNAVAILABLE'}`);
+        
         if (backendAvailable) {
-          console.log('✅ Backend is available');
+          console.log('✅ Backend is available and responding');
           break;
         } else {
-          console.log(`⚠️ Backend not ready yet (attempt ${attempt + 1})`);
+          console.log(`⚠️ Backend not ready (attempt ${attempt + 1}/${maxAttempts})`);
         }
       } catch (err) {
-        console.log(`⚠️ Health check attempt ${attempt + 1} failed:`, err);
+        console.error(`❌ Health check attempt ${attempt + 1} threw error:`, err);
       }
       
       if (attempt < maxAttempts - 1) {
-        console.log(`⏳ Waiting ${retryDelays[attempt]}ms before retry...`);
+        console.log(`⏳ Retrying in ${retryDelays[attempt]}ms...`);
         await new Promise(resolve => setTimeout(resolve, retryDelays[attempt]));
       }
     }

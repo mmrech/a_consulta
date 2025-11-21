@@ -9,6 +9,9 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_API_URL ||
     ? window.location.origin.replace(/:\d+$/, '') + ':8080'
     : (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8080` : 'http://0.0.0.0:8080'));
 
+// Log the backend URL on initialization for debugging
+console.log('🔧 Backend URL configured as:', BACKEND_URL);
+
 interface AuthTokens {
   access_token: string;
   token_type: string;
@@ -353,13 +356,18 @@ class BackendClient {
    */
   async healthCheck(): Promise<boolean> {
     try {
+      console.log(`🌐 Checking backend health at: ${BACKEND_URL}/api/health`);
       const response = await fetch(`${BACKEND_URL}/api/health`, {
         method: 'GET',
-        signal: AbortSignal.timeout(10000), // 10 second timeout for startup
+        signal: AbortSignal.timeout(5000), // 5 second timeout
       });
+      console.log(`📡 Health check response: status=${response.status}, ok=${response.ok}`);
       return response.ok;
     } catch (error) {
-      console.warn('Health check failed:', error);
+      console.error('❌ Health check failed:', {
+        error: error instanceof Error ? error.message : String(error),
+        backendUrl: BACKEND_URL
+      });
       return false; // Backend not available
     }
   }
