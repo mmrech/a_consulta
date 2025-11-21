@@ -186,6 +186,12 @@ The codebase includes deployment configurations for 8 platforms (see DEPLOYMENT_
 - **Python:** Python 3.12 with pip-installed dependencies
 - **Node.js:** npm with package.json dependencies
 
+**Zero-Configuration Authentication:**
+- Backend auto-creates demo user (`demo@example.com`) on startup
+- Frontend automatically authenticates with demo user
+- No manual `.env.local` file creation required
+- All citation features enabled out of the box
+
 **Required Secrets (via Replit Secrets):**
 - `GEMINI_API_KEY`: Google Gemini API key for AI features
 - `JWT_SECRET_KEY`: Secret for backend authentication tokens
