@@ -178,6 +178,8 @@ export const PDFRenderer = {
             const textContent = await page.getTextContent();
             const textLayer = document.createElement('div');
             textLayer.className = 'textLayer';
+            textLayer.setAttribute('role', 'textbox');
+            textLayer.setAttribute('aria-label', 'PDF text content - click and drag to select');
             const textItems: PDFTextItem[] = [];
 
             // Process each text item
@@ -194,6 +196,12 @@ export const PDFRenderer = {
 
                 // Disable font ligatures for better selection accuracy
                 span.style.fontFeatureSettings = '"liga" 0';
+                
+                // Improve selectability
+                span.style.pointerEvents = 'auto';
+                span.style.cursor = 'text';
+                span.setAttribute('role', 'text');
+                span.setAttribute('aria-label', item.str);
 
                 // Calculate transform using PDF.js utility
                 // Transform matrix: [scaleX, skewY, skewX, scaleY, translateX, translateY]

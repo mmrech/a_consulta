@@ -28,3 +28,52 @@ body {
     opacity: 1;
   }
 }
+
+/* Text Layer */
+        .textLayer {
+            position: absolute;
+            left: 0;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            overflow: hidden;
+            opacity: 0.3;
+            line-height: 1.0;
+        }
+        .textLayer span {
+            color: transparent;
+            position: absolute;
+            white-space: pre;
+            cursor: text;
+            transform-origin: 0% 0%;
+            pointer-events: auto;
+            user-select: text;
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+        }
+
+        /* Show text outline on hover for better visibility */
+        .textLayer:hover span {
+            text-shadow: 0 0 1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Active selection state - more visible */
+        .textLayer.active-selection {
+            opacity: 0.5;
+        }
+
+        /* Make selection highlighting more visible */
+        .textLayer span.highlight {
+            background-color: rgba(255, 255, 0, 0.6) !important;
+            color: rgba(0, 0, 0, 0.8) !important;
+            text-shadow: none;
+            border-radius: 2px;
+            padding: 0 2px;
+        }
+
+        /* Extracted text styling */
+        .textLayer span.extracted {
+            background-color: rgba(76, 175, 80, 0.3) !important;
+            border-bottom: 2px solid #4CAF50;
+        }
