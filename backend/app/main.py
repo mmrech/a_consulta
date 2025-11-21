@@ -80,7 +80,7 @@ async def startup_event():
 
 # Parse CORS origins from environment variable
 cors_origins_env = os.getenv("CORS_ORIGINS", "")
-allowed_origins = [settings.FRONTEND_URL]
+allowed_origins = []
 if cors_origins_env:
     if cors_origins_env == "*":
         allowed_origins = ["*"]
