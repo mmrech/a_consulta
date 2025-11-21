@@ -169,12 +169,12 @@ export interface DeepAnalysisResponse {
 export const BackendAIClient = {
     /**
      * 1. Generate PICO-T summary
-     * Proxies to: POST /api/ai/generate-pico
+     * Proxies to: POST /ai/generate-pico
      */
     async generatePICO(request: PICORequest): Promise<PICOResponse> {
         try {
             const response = await BackendProxyService.request<PICOResponse>({
-                url: '/api/ai/generate-pico',
+                url: '/ai/generate-pico',
                 method: 'POST',
                 body: request,
                 cache: true,        // PICO extraction is deterministic, can be cached
@@ -193,12 +193,12 @@ export const BackendAIClient = {
 
     /**
      * 2. Generate summary
-     * Proxies to: POST /api/ai/generate-summary
+     * Proxies to: POST /ai/generate-summary
      */
     async generateSummary(request: SummaryRequest): Promise<SummaryResponse> {
         try {
             const response = await BackendProxyService.request<SummaryResponse>({
-                url: '/api/ai/generate-summary',
+                url: '/ai/generate-summary',
                 method: 'POST',
                 body: request,
                 cache: true,        // Summary generation is deterministic, can be cached
@@ -217,12 +217,12 @@ export const BackendAIClient = {
 
     /**
      * 3. Validate field
-     * Proxies to: POST /api/ai/validate-field
+     * Proxies to: POST /ai/validate-field
      */
     async validateField(request: ValidationRequest): Promise<ValidationResponse> {
         try {
             const response = await BackendProxyService.request<ValidationResponse>({
-                url: '/api/ai/validate-field',
+                url: '/ai/validate-field',
                 method: 'POST',
                 body: request,
                 cache: false,       // Validation is dynamic (field value changes), don't cache
@@ -241,12 +241,12 @@ export const BackendAIClient = {
 
     /**
      * 4. Find metadata
-     * Proxies to: POST /api/ai/find-metadata
+     * Proxies to: POST /ai/find-metadata
      */
     async findMetadata(request: MetadataRequest): Promise<MetadataResponse> {
         try {
             const response = await BackendProxyService.request<MetadataResponse>({
-                url: '/api/ai/find-metadata',
+                url: '/ai/find-metadata',
                 method: 'POST',
                 body: request,
                 cache: true,        // Metadata extraction is deterministic, can be cached
@@ -265,12 +265,12 @@ export const BackendAIClient = {
 
     /**
      * 5. Extract tables
-     * Proxies to: POST /api/ai/extract-tables
+     * Proxies to: POST /ai/extract-tables
      */
     async extractTables(request: TableExtractionRequest): Promise<TableExtractionResponse> {
         try {
             const response = await BackendProxyService.request<TableExtractionResponse>({
-                url: '/api/ai/extract-tables',
+                url: '/ai/extract-tables',
                 method: 'POST',
                 body: request,
                 cache: true,        // Table extraction is deterministic, can be cached
@@ -289,12 +289,12 @@ export const BackendAIClient = {
 
     /**
      * 6. Analyze image
-     * Proxies to: POST /api/ai/analyze-image
+     * Proxies to: POST /ai/analyze-image
      */
     async analyzeImage(request: ImageAnalysisRequest): Promise<ImageAnalysisResponse> {
         try {
             const response = await BackendProxyService.request<ImageAnalysisResponse>({
-                url: '/api/ai/analyze-image',
+                url: '/ai/analyze-image',
                 method: 'POST',
                 body: request,
                 cache: false,       // Image analysis with custom prompts, don't cache
@@ -313,12 +313,12 @@ export const BackendAIClient = {
 
     /**
      * 7. Deep analysis
-     * Proxies to: POST /api/ai/deep-analysis
+     * Proxies to: POST /ai/deep-analysis
      */
     async deepAnalysis(request: DeepAnalysisRequest): Promise<DeepAnalysisResponse> {
         try {
             const response = await BackendProxyService.request<DeepAnalysisResponse>({
-                url: '/api/ai/deep-analysis',
+                url: '/ai/deep-analysis',
                 method: 'POST',
                 body: request,
                 cache: false,       // Deep analysis with custom prompts, don't cache
@@ -340,7 +340,7 @@ export const BackendAIClient = {
      */
     async healthCheck(): Promise<boolean> {
         try {
-            const response = await BackendProxyService.get('/api/health');
+            const response = await BackendProxyService.get('/health');
             return response.status >= 200 && response.status < 300;
         } catch (error) {
             console.warn('Backend AI health check failed:', error);
