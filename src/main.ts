@@ -1036,18 +1036,30 @@ async function initializeApp() {
         FormManager.initialize();
         console.log('✓ Form Manager initialized');
 
-        // Initialize authentication (auto-login with demo user)
-        await AuthManager.initialize();
+        // Initialize Auth Manager
+        AuthManager.initialize();
         console.log('✓ Backend authentication initialized');
 
-        // Initialize PDF library dropdown after authentication
-        const PDFLibraryService = (await import('./services/PDFLibraryService')).default;
-        await PDFLibraryService.populateLibraryDropdown();
-        console.log('✓ PDF library loaded');
+        // Auto-login with demo credentials if not authenticated and backend is available
+        if (await BackendClient.healthCheck()) {
+            if (!BackendClient.isAuthenticated()) {
+                try {
+                    console.log('🔐 Auto-logging in with demo credentials...');
+                    await BackendClient.login('demo@example.com', 'demo123');
+                    console.log('✅ Auto-login successful');
+                } catch (error) {
+                    console.warn('⚠️ Auto-login failed, PDF library may not be available:', error);
+                }
+            }
+        }
 
-        // Initialize Citation UI Enhancer
-        citationUIEnhancer.initialize();
-        console.log('✓ Citation UI Enhancer initialized');
+        // Load PDF library (only works if authenticated)
+        try {
+            await PDFLibraryService.populateLibraryDropdown();
+            console.log('✓ PDF library loaded');
+        } catch (error) {
+            console.warn('⚠️ Could not load PDF library:', error);
+        }
 
         // Check backend health
         BackendHealthMonitor.checkHealth();
