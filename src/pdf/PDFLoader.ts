@@ -243,13 +243,17 @@ const PDFLoader = {
         totalPagesElement.textContent = pdfDoc.numPages.toString();
       }
 
+      // Hide upload area after successful load
       if (uploadAreaElement) {
         uploadAreaElement.style.display = 'none';
       }
 
+      // Show PDF viewer
       if (pdfPagesElement) {
         pdfPagesElement.style.display = 'block';
       }
+      
+      console.log('✓ PDF UI updated: upload hidden, viewer shown');
 
       // Show success status
       StatusManager.showLoading(false);

@@ -347,9 +347,13 @@ function setupEventListeners() {
 
     // Drag and Drop for Upload Area
     const uploadArea = document.getElementById('upload-area');
-    const pdfFile = document.getElementById('pdf-file') as HTMLInputElement; // Assuming pdfFile is an input element
+    const pdfFile = document.getElementById('pdf-file') as HTMLInputElement;
 
     if (uploadArea && pdfFile) {
+        // Make sure upload area is visible on load
+        uploadArea.style.display = 'block';
+        
+        // Click to browse
         uploadArea.addEventListener('click', () => pdfFile.click());
 
         uploadArea.addEventListener('keydown', (e) => {
@@ -359,6 +363,17 @@ function setupEventListeners() {
             }
         });
 
+        // File input change handler
+        pdfFile.addEventListener('change', (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (file && file.type === 'application/pdf') {
+                PDFLoader.loadPDF(file);
+            } else if (file) {
+                StatusManager.show('Please select a valid PDF file', 'warning');
+            }
+        });
+
+        // Drag and drop handlers
         uploadArea.addEventListener('dragover', (e) => {
             e.preventDefault();
             uploadArea.style.background = '#e3f2fd';
@@ -378,6 +393,10 @@ function setupEventListeners() {
                 StatusManager.show('Please drop a valid PDF file', 'warning');
             }
         });
+        
+        console.log('✓ PDF upload area initialized and visible');
+    } else {
+        console.warn('⚠️ Upload area or file input not found');
     }
 
     // Image Upload for Analysis
