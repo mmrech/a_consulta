@@ -1037,6 +1037,19 @@ async function initializeApp() {
         // Initialize backend authentication
         await AuthManager.initialize();
         console.log('✓ Backend authentication initialized');
+        
+        // Test backend connectivity
+        try {
+            const healthCheck = await fetch('/api/health');
+            if (healthCheck.ok) {
+                console.log('✅ Backend is reachable at /api/health');
+            } else {
+                console.warn('⚠️ Backend health check failed with status:', healthCheck.status);
+            }
+        } catch (error) {
+            console.error('❌ Backend is not reachable:', error);
+            console.log('💡 Make sure backend workflow is running on port 8080');
+        }
 
         // Populate PDF library dropdown if backend is available
         if (BackendClient.isAuthenticated()) {

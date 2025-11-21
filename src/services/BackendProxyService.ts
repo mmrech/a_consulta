@@ -103,10 +103,9 @@ class RateLimiter {
 
 export const BackendProxyService = {
     config: {
-        baseURL: typeof window !== 'undefined' && window.location.hostname.includes('replit.dev') 
-            ? window.location.origin.replace(/:\d+$/, '') + ':8080'
-            : (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8080` : 'http://0.0.0.0:8080'),
-        timeout: 30000,
+        // Default configuration - uses Vite proxy to route to backend
+        baseURL: '/api',  // Vite dev server proxies /api to backend on port 8080
+        timeout: 30000,   // Increased timeout for AI operations
         retryAttempts: 3,
         retryDelay: 1000,
         cacheEnabled: true,

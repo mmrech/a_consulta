@@ -2,6 +2,7 @@
 La Consulta Backend API
 Main application entry point with all routers configured
 """
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
@@ -9,7 +10,7 @@ from .routers import auth, documents, extractions, annotations, ai, pdf_library
 from .models import User, db
 from .auth import get_password_hash
 from datetime import datetime, timezone
-import os
+
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -81,10 +82,26 @@ async def startup_event():
 cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
 cors_origins = cors_origins_str.split(",") if cors_origins_str != "*" else ["*"]
 
+# Get current Replit URL if running on Replit
+replit_url = None
+if os.getenv('REPL_SLUG') and os.getenv('REPL_OWNER'):
+    replit_url = f"https://{os.getenv('REPL_SLUG')}.{os.getenv('REPL_OWNER')}.repl.co"
+
+allowed_origins = [
+    "http://localhost:5173",
+    "http://localhost:5000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5000",
+] + settings.CORS_ORIGINS
+
+if replit_url:
+    allowed_origins.append(replit_url)
+
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins if cors_origins != ["*"] else ["*"],
+    allow_origins=allowed_origins if allowed_origins != ["*"] else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
