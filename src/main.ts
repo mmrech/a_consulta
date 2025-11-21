@@ -1036,29 +1036,22 @@ async function initializeApp() {
         FormManager.initialize();
         console.log('✓ Form Manager initialized');
 
-        // Initialize Auth Manager
-        AuthManager.initialize();
+        // Initialize and wait for authentication to complete
+        console.log('🔐 Initializing authentication...');
+        const isAuthenticated = await AuthManager.ensureAuthenticated();
         console.log('✓ Backend authentication initialized');
 
-        // Auto-login with demo credentials if not authenticated and backend is available
-        if (await BackendClient.healthCheck()) {
-            if (!BackendClient.isAuthenticated()) {
-                try {
-                    console.log('🔐 Auto-logging in with demo credentials...');
-                    await BackendClient.login('demo@example.com', 'demo123');
-                    console.log('✅ Auto-login successful');
-                } catch (error) {
-                    console.warn('⚠️ Auto-login failed, PDF library may not be available:', error);
-                }
+        // Load PDF library only if authenticated
+        if (isAuthenticated) {
+            try {
+                console.log('📚 Loading PDF library...');
+                await PDFLibraryService.populateLibraryDropdown();
+                console.log('✓ PDF library loaded');
+            } catch (error) {
+                console.warn('⚠️ Could not load PDF library:', error);
             }
-        }
-
-        // Load PDF library (only works if authenticated)
-        try {
-            await PDFLibraryService.populateLibraryDropdown();
-            console.log('✓ PDF library loaded');
-        } catch (error) {
-            console.warn('⚠️ Could not load PDF library:', error);
+        } else {
+            console.log('ℹ️ Running in frontend-only mode - PDF library not available');
         }
 
         // Check backend health
