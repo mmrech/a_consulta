@@ -4,16 +4,18 @@
  * Handles authentication, token management, and API requests
  */
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_API_URL ||
-  (typeof window !== 'undefined' && window.location.hostname.includes('replit.dev')
-    ? window.location.origin.replace(/:\d+$/, '') + ':8080'
-    : (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8080` : 'http://0.0.0.0:8080'));
+// Simple, robust backend URL construction for Replit
+const BACKEND_URL = import.meta.env.VITE_BACKEND_API_URL || 
+  (typeof window !== 'undefined' 
+    ? `${window.location.protocol}//${window.location.hostname}:8080`
+    : 'http://0.0.0.0:8080');
 
 // Log the backend URL prominently for debugging
 console.log('═══════════════════════════════════════════');
 console.log('🔧 BACKEND URL:', BACKEND_URL);
 console.log('🌍 Window hostname:', typeof window !== 'undefined' ? window.location.hostname : 'N/A');
-console.log('🌍 Window origin:', typeof window !== 'undefined' ? window.location.origin : 'N/A');
+console.log('🌍 Window protocol:', typeof window !== 'undefined' ? window.location.protocol : 'N/A');
+console.log('🌍 Full URL will be:', typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8080` : 'N/A');
 console.log('═══════════════════════════════════════════');
 
 interface AuthTokens {
