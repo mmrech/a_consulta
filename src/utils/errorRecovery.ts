@@ -73,7 +73,7 @@ function createRecoveryModal(): Promise<RecoveryModalResult> {
           Last crash: ${crashTime}
         </p>
       </div>
-      
+
       <div style="background: rgba(255, 255, 255, 0.05); padding: 16px; border-radius: 8px; margin: 20px 0;">
         <p style="margin: 0 0 12px 0; font-size: 15px; line-height: 1.6;">
           It looks like the app crashed during your last session. Would you like to restore your work?
