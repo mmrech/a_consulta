@@ -123,10 +123,11 @@ class MedicalAgentBridge {
             const prompt = this.buildAgentPrompt(agentName, data, dataType);
 
             // Call backend agent (backend-only architecture)
-            const backendAvailable = await BackendClient.healthCheck().catch(() => false);
+            // Skip health check during agent processing - backend availability verified at init time
+            // Health check with timeout can interrupt long-running agent operations (20+ sec processing)
             const backendAuthenticated = BackendClient.isAuthenticated();
 
-            if (!backendAvailable || !backendAuthenticated) {
+            if (!backendAuthenticated) {
                 throw new Error('Backend API is required for agent functionality. Please ensure the backend is running and you are authenticated.');
             }
 

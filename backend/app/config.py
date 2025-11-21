@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.5-flash"
     ANTHROPIC_MODEL: str = "claude-sonnet-4-5-20250929"
 
-    LLM_PRIMARY: str = "gemini"
-    LLM_FALLBACK: str = "anthropic"
+    LLM_PRIMARY: str = "anthropic"
+    LLM_FALLBACK: str = "gemini"
     FORCE_FALLBACK: bool = False
 
     JWT_SECRET_KEY: str
