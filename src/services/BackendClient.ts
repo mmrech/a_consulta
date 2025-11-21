@@ -4,19 +4,12 @@
  * Handles authentication, token management, and API requests
  */
 
-// Simple, robust backend URL construction for Replit
-const BACKEND_URL = import.meta.env.VITE_BACKEND_API_URL || 
-  (typeof window !== 'undefined' 
-    ? `${window.location.protocol}//${window.location.hostname}:8080`
-    : 'http://0.0.0.0:8080');
+// Use Vite proxy for backend communication (configured in vite.config.ts)
+// This avoids CORS issues and works reliably in both dev and production
+const BACKEND_URL = import.meta.env.VITE_BACKEND_API_URL || '';
 
-// Log the backend URL prominently for debugging
-console.log('═══════════════════════════════════════════');
-console.log('🔧 BACKEND URL:', BACKEND_URL);
-console.log('🌍 Window hostname:', typeof window !== 'undefined' ? window.location.hostname : 'N/A');
-console.log('🌍 Window protocol:', typeof window !== 'undefined' ? window.location.protocol : 'N/A');
-console.log('🌍 Full URL will be:', typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:8080` : 'N/A');
-console.log('═══════════════════════════════════════════');
+// Log the backend URL for debugging
+console.log('🔧 Backend URL:', BACKEND_URL || '(using Vite proxy)');
 
 interface AuthTokens {
   access_token: string;
