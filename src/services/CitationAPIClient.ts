@@ -35,20 +35,32 @@ interface QueryCitationsResponse {
 
 export class CitationAPIClient {
     private backendUrl: string
-    private authToken: string | null = null
 
     constructor() {
         this.backendUrl = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8080'
-        // Get auth token from localStorage
-        this.authToken = localStorage.getItem('auth_token')
+    }
+
+    /**
+     * Lazily get auth token from localStorage
+     */
+    private getAuthToken(): string | null {
+        return localStorage.getItem('auth_token')
+    }
+
+    /**
+     * Check if user is authenticated
+     */
+    isAuthenticated(): boolean {
+        return this.getAuthToken() !== null
     }
 
     private getAuthHeaders(): HeadersInit {
-        if (!this.authToken) {
-            throw new Error('No authentication token available')
+        const token = this.getAuthToken()
+        if (!token) {
+            throw new Error('Please log in to use citation features')
         }
         return {
-            'Authorization': `Bearer ${this.authToken}`,
+            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
         }
     }
@@ -109,7 +121,6 @@ export class CitationAPIClient {
      * Set auth token
      */
     setAuthToken(token: string) {
-        this.authToken = token
         localStorage.setItem('auth_token', token)
     }
 }

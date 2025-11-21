@@ -373,6 +373,15 @@ export class CitationSidebar {
         const queryInput = document.getElementById('query-input') as HTMLInputElement
         const queryBtn = document.getElementById('query-btn') as HTMLButtonElement
         
+        // Check authentication first
+        if (!citationAPIClient.isAuthenticated()) {
+            if (uploadStatus) {
+                uploadStatus.className = 'upload-status error'
+                uploadStatus.textContent = '⚠️ Please log in to use citation features'
+            }
+            return
+        }
+        
         // Get current PDF data from AppState
         const pdfBase64Data = this.appState.getPDFBase64Data()
         const state = this.appState.getState()
@@ -482,6 +491,15 @@ export class CitationSidebar {
 
     private async handleQuery(query: string) {
         if (!query.trim() || !this.fileSearchStoreId) {
+            return
+        }
+        
+        // Check authentication
+        if (!citationAPIClient.isAuthenticated()) {
+            const answerText = document.getElementById('answer-text')
+            if (answerText) {
+                answerText.textContent = '⚠️ Please log in to use citation features'
+            }
             return
         }
         
