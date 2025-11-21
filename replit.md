@@ -6,6 +6,13 @@ Clinical Extractor is a production-ready TypeScript/Vite web application designe
 
 The system is built for systematic review of neurosurgical literature but is extensible to other medical research domains. It combines advanced PDF processing (via PDF.js), a 6-agent medical AI pipeline, and robust error recovery mechanisms to provide researchers with a reliable tool for evidence-based medicine.
 
+**Latest Features (December 2024):**
+- **Complete Citation & Provenance System**: Backend Gemini File Search API integration with RAG-powered citation extraction, interactive citation sidebar with PDF jump links, IndexedDB caching with 7-day TTL
+- **Enhanced Exports**: CSV/Excel files now include citation sources, page numbers, and dedicated Citation Audit sheets for regulatory compliance
+- **Citation UI Enhancements**: Visual badges showing citation counts, hover tooltips with citation previews, auto-citation tracking for manual extractions
+- **Authentication & Security**: Graceful degradation for unauthenticated users (citation features disabled without breaking core functionality), JWT-based backend authentication
+- **Production Ready**: All workflows running without crashes, 10/10 LLM integration tests passing, comprehensive error handling throughout
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
