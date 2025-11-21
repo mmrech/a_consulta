@@ -438,6 +438,7 @@ export class CitationSidebar {
                     fileName,
                     currentHash
                 )
+            }
             
             // Update UI on success
             if (uploadStatus) {
