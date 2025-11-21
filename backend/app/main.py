@@ -9,6 +9,7 @@ from .routers import auth, ai, documents, extractions, annotations
 from .models import User, db
 from .auth import get_password_hash
 from datetime import datetime, timezone
+import os
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -22,12 +23,12 @@ async def create_demo_user():
     """Create a demo user automatically for out-of-the-box functionality"""
     demo_email = "demo@example.com"
     demo_password = "demo123"
-    
+
     # Check if demo user already exists
     if demo_email not in db.users_by_email:
         user_id = db.generate_id()
         now = datetime.now(timezone.utc)
-        
+
         demo_user = User(
             id=user_id,
             email=demo_email,
@@ -35,20 +36,26 @@ async def create_demo_user():
             created_at=now,
             updated_at=now
         )
-        
+
         db.users[user_id] = demo_user
         db.users_by_email[demo_email] = user_id
-        
+
         print(f"✅ Auto-created demo user: {demo_email}")
     else:
         print(f"ℹ️  Demo user already exists: {demo_email}")
 
+# Parse CORS origins from environment variable
+cors_origins_str = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173")
+cors_origins = cors_origins_str.split(",") if cors_origins_str != "*" else ["*"]
+
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.CORS_ORIGINS == "*" else settings.cors_origins_list,  # Frontend URLs
-    allow_credentials=False if settings.CORS_ORIGINS == "*" else True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],  # Restrict to common HTTP methods
-    allow_headers=["*"],  # Allow all headers for development
+    allow_origins=cors_origins if cors_origins != ["*"] else ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_origin_regex=r"https://.*\.replit\.dev" if cors_origins == ["*"] else None,
 )
 
 app.include_router(auth.router)
