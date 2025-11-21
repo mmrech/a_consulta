@@ -59,28 +59,44 @@ class AuthManager {
       return false;
     }
 
+    console.log('🔐 Backend is healthy, attempting authentication...');
+
     try {
       if (!BackendClient.isAuthenticated()) {
+        console.log('🔑 No existing auth token, attempting login...');
         try {
+          console.log(`📧 Logging in as ${DEFAULT_USER.email}...`);
           await BackendClient.login(DEFAULT_USER.email, DEFAULT_USER.password);
           console.log('✅ Authenticated with backend');
         } catch (loginError: any) {
+          console.log(`❌ Login failed: ${loginError.message} (status: ${loginError.status})`);
+          
           // Prefer status code check, fallback to message if status is missing
           if ((loginError.status === 401) ||
               (loginError.response?.status === 401) ||
               (loginError.message && loginError.message.includes('Incorrect email or password'))) {
+            console.log('🆕 User not found, attempting registration...');
             await BackendClient.register(DEFAULT_USER.email, DEFAULT_USER.password);
             console.log('✅ Registered and authenticated with backend');
           } else {
+            console.error('❌ Unexpected login error:', loginError);
             throw loginError;
           }
         }
+      } else {
+        console.log('✅ Already authenticated (token exists)');
       }
 
       this.initialized = true;
+      console.log('🎉 Authentication complete - backend mode active');
       return true;
     } catch (error: any) {
-      console.warn('⚠️ Backend authentication failed - continuing in frontend-only mode:', error.message);
+      console.error('❌ Backend authentication failed:', {
+        message: error.message,
+        status: error.status,
+        stack: error.stack
+      });
+      console.warn('⚠️ Falling back to frontend-only mode');
       // Don't show error to user - app works fine without backend
       this.initialized = true;
       return false; // Backend auth failed, but app can still work
