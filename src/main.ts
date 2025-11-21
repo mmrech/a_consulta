@@ -1087,6 +1087,15 @@ async function initializeApp() {
         // 10. Initialize Citation Sidebar
         const citationSidebar = getCitationSidebar();
         console.log('✓ Citation Sidebar initialized');
+        
+        // Add button to show Citation Sidebar
+        const citationBtn = document.createElement('button');
+        citationBtn.textContent = '📑 Show Citations';
+        citationBtn.style.cssText = 'position: fixed; top: 10px; right: 10px; z-index: 10000; padding: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;';
+        citationBtn.onclick = () => {
+            citationSidebar.toggle();
+        };
+        document.body.appendChild(citationBtn);
 
         // 11. Show initial status
         StatusManager.show('Clinical Extractor Ready. Load a PDF to begin.', 'info');
