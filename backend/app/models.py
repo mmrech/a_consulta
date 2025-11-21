@@ -181,7 +181,7 @@ class AnnotationResponse(BaseModel):
 
 class PICORequest(BaseModel):
     """PICO-T generation request"""
-    document_id: str
+    document_id: Optional[str] = None
     pdf_text: str
 
 
@@ -197,7 +197,7 @@ class PICOResponse(BaseModel):
 
 class SummaryRequest(BaseModel):
     """Summary generation request"""
-    document_id: str
+    document_id: Optional[str] = None
     pdf_text: str
 
 
@@ -208,7 +208,7 @@ class SummaryResponse(BaseModel):
 
 class ValidationRequest(BaseModel):
     """Field validation request"""
-    document_id: str
+    document_id: Optional[str] = None
     field_id: str
     field_value: str
     pdf_text: str
@@ -223,7 +223,7 @@ class ValidationResponse(BaseModel):
 
 class MetadataRequest(BaseModel):
     """Metadata extraction request"""
-    document_id: str
+    document_id: Optional[str] = None
     pdf_text: str
 
 
@@ -237,7 +237,7 @@ class MetadataResponse(BaseModel):
 
 class TableExtractionRequest(BaseModel):
     """Table extraction request"""
-    document_id: str
+    document_id: Optional[str] = None
     pdf_text: str
 
 
@@ -255,7 +255,7 @@ class TableExtractionResponse(BaseModel):
 
 class ImageAnalysisRequest(BaseModel):
     """Image analysis request"""
-    document_id: str
+    document_id: Optional[str] = None
     image_base64: str
     prompt: str
 
@@ -267,7 +267,7 @@ class ImageAnalysisResponse(BaseModel):
 
 class DeepAnalysisRequest(BaseModel):
     """Deep analysis request"""
-    document_id: str
+    document_id: Optional[str] = None
     pdf_text: str
     prompt: str
 
