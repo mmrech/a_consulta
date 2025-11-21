@@ -103,7 +103,9 @@ class RateLimiter {
 
 export const BackendProxyService = {
     config: {
-        baseURL: 'http://0.0.0.0:8080',  // Backend API base URL
+        baseURL: typeof window !== 'undefined' && window.location.hostname.includes('replit.dev') 
+            ? window.location.origin.replace(':5000', ':8080').replace('5000', '8080')
+            : 'http://localhost:8080',  // Backend API base URL
         timeout: 30000,
         retryAttempts: 3,
         retryDelay: 1000,
