@@ -4,9 +4,29 @@
  * Handles authentication, token management, and API requests
  */
 
-// Use Vite proxy for backend communication (configured in vite.config.ts)
-// This avoids CORS issues and works reliably in both dev and production
-const BACKEND_URL = import.meta.env.VITE_BACKEND_API_URL || '';
+// Dynamically construct backend URL based on environment
+let BACKEND_URL = import.meta.env.VITE_BACKEND_API_URL || '';
+
+// If BACKEND_URL is localhost, convert it to the current Replit domain
+if (BACKEND_URL.includes('localhost')) {
+  const currentHost = window.location.hostname;
+  const protocol = window.location.protocol;
+  // Replace localhost with current host, keep the port
+  BACKEND_URL = BACKEND_URL.replace(/localhost/, currentHost);
+}
+
+// If no BACKEND_URL and we're not in localhost dev, use current domain with port 8080
+if (!BACKEND_URL) {
+  const currentHost = window.location.hostname;
+  const protocol = window.location.protocol;
+  // In Replit, use the same domain with port 8080
+  if (currentHost !== 'localhost' && currentHost !== '127.0.0.1') {
+    BACKEND_URL = `${protocol}//${currentHost}:8080`;
+  } else {
+    // For local dev, use localhost:8080
+    BACKEND_URL = `${protocol}//localhost:8080`;
+  }
+}
 
 // Log the backend URL for debugging
 console.log('🔧 Backend URL:', BACKEND_URL || '(using Vite proxy)');
