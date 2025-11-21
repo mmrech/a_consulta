@@ -355,10 +355,11 @@ class BackendClient {
     try {
       const response = await fetch(`${BACKEND_URL}/api/health`, {
         method: 'GET',
-        signal: AbortSignal.timeout(5000), // 5 second timeout for startup
+        signal: AbortSignal.timeout(10000), // 10 second timeout for startup
       });
       return response.ok;
     } catch (error) {
+      console.warn('Health check failed:', error);
       return false; // Backend not available
     }
   }

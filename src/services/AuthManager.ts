@@ -26,8 +26,8 @@ class AuthManager {
 
     // Check if backend is available first with retry (longer delays for startup)
     let backendAvailable = false;
-    const maxAttempts = 5;
-    const retryDelays = [500, 1000, 1500, 2000, 2500]; // Progressive backoff
+    const maxAttempts = 8;
+    const retryDelays = [500, 1000, 1500, 2000, 2500, 3000, 3500, 4000]; // Progressive backoff
     
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
@@ -36,12 +36,15 @@ class AuthManager {
         if (backendAvailable) {
           console.log('✅ Backend is available');
           break;
+        } else {
+          console.log(`⚠️ Backend not ready yet (attempt ${attempt + 1})`);
         }
       } catch (err) {
         console.log(`⚠️ Health check attempt ${attempt + 1} failed:`, err);
       }
       
       if (attempt < maxAttempts - 1) {
+        console.log(`⏳ Waiting ${retryDelays[attempt]}ms before retry...`);
         await new Promise(resolve => setTimeout(resolve, retryDelays[attempt]));
       }
     }
