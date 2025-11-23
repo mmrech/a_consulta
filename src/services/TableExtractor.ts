@@ -85,8 +85,9 @@ class TableExtractor {
     /**
      * Step 2: Group text items into rows based on Y-coordinate
      * Items with similar Y values (within tolerance) belong to the same row
+     * TIGHTENED: Reduced tolerance from 5 to 3 for tighter row grouping
      */
-    private groupItemsByRow(items: TextItem[], tolerance = 5): TextItem[][] {
+    private groupItemsByRow(items: TextItem[], tolerance = 3): TextItem[][] {
         // Sort by Y coordinate
         const sorted = [...items].sort((a, b) => a.y - b.y)
 
@@ -119,8 +120,9 @@ class TableExtractor {
     /**
      * Step 3: Detect column positions by clustering X coordinates
      * Items that align vertically (similar X positions) form columns
+     * TIGHTENED: Reduced tolerance from 10 to 8 for better column detection
      */
-    private detectColumnPositions(row: TextItem[], tolerance = 10): number[] {
+    private detectColumnPositions(row: TextItem[], tolerance = 8): number[] {
         const positions = row.map(item => item.x)
 
         // Cluster nearby X positions
@@ -147,6 +149,12 @@ class TableExtractor {
     /**
      * Step 4: Find table regions by detecting grid patterns
      * A table is: multiple consecutive rows with aligned columns
+     * 
+     * TIGHTENED CRITERIA to reduce false positives:
+     * - Minimum 4 columns (was 3)
+     * - Minimum 3 rows (was 2)
+     * - Minimum table width/height requirements
+     * - Better alignment validation
      */
     private detectTableRegions(rows: TextItem[][]): any[] {
         const tableRegions: any[] = []
@@ -155,18 +163,25 @@ class TableExtractor {
         rows.forEach((row, rowIndex) => {
             const columnPositions = this.detectColumnPositions(row)
 
-            // Check if row is part of a table
-            const hasMultipleColumns = columnPositions.length >= 3
+            // TIGHTENED: Require at least 4 columns (was 3)
+            // This filters out regular paragraphs with 3+ words
+            const hasMultipleColumns = columnPositions.length >= 4
+            
+            // TIGHTENED: Require better alignment (80% instead of 70%)
             const alignsWithTable = currentTable &&
-                this.alignsWithColumns(columnPositions, currentTable.columnPositions)
+                this.alignsWithColumns(columnPositions, currentTable.columnPositions, 10, 0.8)
 
             if (alignsWithTable) {
                 // Continue existing table
                 currentTable.rows.push(row)
             } else if (hasMultipleColumns) {
                 // Start new table
-                if (currentTable && currentTable.rows.length >= 2) {
-                    tableRegions.push(currentTable)
+                // TIGHTENED: Require at least 3 rows (was 2)
+                if (currentTable && currentTable.rows.length >= 3) {
+                    // Additional validation: check table size
+                    if (this.isValidTable(currentTable)) {
+                        tableRegions.push(currentTable)
+                    }
                 }
                 currentTable = {
                     startRow: rowIndex,
@@ -175,35 +190,109 @@ class TableExtractor {
                 }
             } else {
                 // Not a table row - end current table if exists
-                if (currentTable && currentTable.rows.length >= 2) {
-                    tableRegions.push(currentTable)
+                if (currentTable && currentTable.rows.length >= 3) {
+                    if (this.isValidTable(currentTable)) {
+                        tableRegions.push(currentTable)
+                    }
                 }
                 currentTable = null
             }
         })
 
         // Don't forget the last table
-        if (currentTable && currentTable.rows.length >= 2) {
-            tableRegions.push(currentTable)
+        if (currentTable && currentTable.rows.length >= 3) {
+            if (this.isValidTable(currentTable)) {
+                tableRegions.push(currentTable)
+            }
         }
 
         return tableRegions
     }
 
     /**
+     * Validate that a table region meets minimum size requirements
+     * Filters out tiny "tables" that are just formatted text
+     */
+    private isValidTable(tableRegion: any): boolean {
+        if (!tableRegion.rows || tableRegion.rows.length < 3) {
+            return false
+        }
+
+        // Calculate bounding box
+        const allItems = tableRegion.rows.flat()
+        if (allItems.length === 0) {
+            return false
+        }
+
+        const xs = allItems.map((item: TextItem) => item.x)
+        const rights = allItems.map((item: TextItem) => item.x + item.width)
+        const ys = allItems.map((item: TextItem) => item.y)
+        const bottoms = allItems.map((item: TextItem) => item.y + item.height)
+
+        const minX = Math.min(...xs)
+        const maxX = Math.max(...rights)
+        const minY = Math.min(...ys)
+        const maxY = Math.max(...bottoms)
+
+        const width = maxX - minX
+        const height = maxY - minY
+
+        // TIGHTENED: Require minimum table dimensions
+        // Tables should be at least 200px wide and 50px tall
+        const minWidth = 200
+        const minHeight = 50
+
+        if (width < minWidth || height < minHeight) {
+            return false
+        }
+
+        // Additional check: table should have reasonable aspect ratio
+        // Very wide or very tall regions are likely not tables
+        const aspectRatio = width / height
+        if (aspectRatio > 10 || aspectRatio < 0.1) {
+            return false
+        }
+
+        // Check that we have multiple distinct columns
+        // If all columns are too close together, it's probably not a table
+        const columnPositions = tableRegion.columnPositions
+        if (columnPositions.length < 4) {
+            return false
+        }
+
+        // Check column spacing - columns should be reasonably spaced
+        let hasGoodSpacing = false
+        for (let i = 1; i < columnPositions.length; i++) {
+            const spacing = columnPositions[i] - columnPositions[i - 1]
+            if (spacing > 30) { // At least 30px between columns
+                hasGoodSpacing = true
+                break
+            }
+        }
+
+        return hasGoodSpacing
+    }
+
+    /**
      * Check if column positions align with existing table columns
-     * At least 70% of positions must align within tolerance
+     * TIGHTENED: At least 80% of positions must align within tolerance (was 70%)
+     * Tighter tolerance for better accuracy
      */
     private alignsWithColumns(
         positions: number[],
         tableColumns: number[],
-        tolerance = 15
+        tolerance = 10,  // TIGHTENED: Reduced from 15 to 10
+        minAlignmentRatio = 0.8  // TIGHTENED: Increased from 0.7 to 0.8
     ): boolean {
+        if (positions.length === 0 || tableColumns.length === 0) {
+            return false
+        }
+
         const aligned = positions.filter(pos =>
             tableColumns.some(col => Math.abs(pos - col) < tolerance)
         )
 
-        return aligned.length >= positions.length * 0.7
+        return aligned.length >= positions.length * minAlignmentRatio
     }
 
     /**

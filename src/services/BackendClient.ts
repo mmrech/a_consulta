@@ -340,6 +340,21 @@ class BackendClient {
       throw new Error(error.detail || 'Failed to delete document');
     }
   }
+
+  /**
+   * Check if backend is available and healthy
+   */
+  async healthCheck(): Promise<boolean> {
+    try {
+      const response = await fetch(`${BACKEND_URL}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(2000), // 2 second timeout
+      });
+      return response.ok;
+    } catch (error) {
+      return false; // Backend not available
+    }
+  }
 }
 
 export default new BackendClient();

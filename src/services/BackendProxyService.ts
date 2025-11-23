@@ -228,17 +228,41 @@ export const BackendProxyService = {
 
             clearTimeout(timeoutId);
 
+            if (!response.ok) {
+<<<<<<< Current (Your changes)
+                // Try to get error message from response body
+                let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                try {
+                    const contentType = response.headers.get('content-type');
+                    if (contentType?.includes('application/json')) {
+                        const errorData = await response.json();
+                        errorMessage = errorData.message || errorData.error || errorMessage;
+                    } else if (typeof response.text === 'function') {
+                        const errorText = await response.text();
+                        if (errorText) errorMessage = errorText;
+                    }
+                } catch (e) {
+                    // Ignore errors reading response body
+                }
+=======
+                // Always include HTTP status in error message for consistency
+                // Format: "HTTP {status}: {message}"
+                // Note: We don't read response body here to avoid consuming it
+                // The statusText is sufficient for error reporting
+                const errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+>>>>>>> Incoming (Background Agent changes)
+                throw new Error(errorMessage);
+            }
+
             const contentType = response.headers.get('content-type');
             let data: any;
 
             if (contentType?.includes('application/json')) {
                 data = await response.json();
-            } else {
+            } else if (typeof response.text === 'function') {
                 data = await response.text();
-            }
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            } else {
+                data = '';
             }
 
             const requestTime = Date.now() - startTime;

@@ -69,7 +69,8 @@ describe('SemanticSearchService', () => {
 
     describe('search', () => {
         it('should find exact matches', async () => {
-            const results = await SemanticSearchService.search('stroke');
+            // Disable semantic expansion to get exact matches
+            const results = await SemanticSearchService.search('stroke', { semanticExpansion: false });
             
             expect(results.length).toBeGreaterThan(0);
             expect(results[0].matchType).toBe('exact');

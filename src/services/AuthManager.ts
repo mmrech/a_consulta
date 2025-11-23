@@ -20,6 +20,14 @@ class AuthManager {
       return true;
     }
 
+    // Check if backend is available first
+    const backendAvailable = await BackendClient.healthCheck().catch(() => false);
+    if (!backendAvailable) {
+      console.log('ℹ️ Backend not available - using frontend-only mode');
+      this.initialized = true;
+      return false; // Backend not available, but app can still work
+    }
+
     try {
       if (!BackendClient.isAuthenticated()) {
         try {
@@ -41,13 +49,10 @@ class AuthManager {
       this.initialized = true;
       return true;
     } catch (error: any) {
-      console.error('❌ Backend authentication failed:', error);
-      StatusManager.show(
-        `Backend connection failed: ${error.message}. AI features may not work.`,
-        'warning',
-        5000
-      );
-      return false;
+      console.warn('⚠️ Backend authentication failed - continuing in frontend-only mode:', error.message);
+      // Don't show error to user - app works fine without backend
+      this.initialized = true;
+      return false; // Backend auth failed, but app can still work
     }
   }
 

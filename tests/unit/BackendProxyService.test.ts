@@ -191,13 +191,22 @@ describe('BackendProxyService', () => {
         });
 
         it('should throw after max retries', async () => {
+            // Configure for 3 retry attempts (will get 3 total calls: initial + 2 retries)
+            // Note: beforeEach sets retryAttempts to 2, so we override it here
+            const originalRetryAttempts = BackendProxyService.config.retryAttempts;
+            BackendProxyService.configure({ retryAttempts: 3 });
+            
             const mockError = new Error('Network error');
-
             (global.fetch as jest.Mock).mockRejectedValue(mockError);
 
             await expect(BackendProxyService.get('/users')).rejects.toThrow();
             
+            // With retryAttempts=3: attempt 1 fails → retry (1 < 3), attempt 2 fails → retry (2 < 3), attempt 3 fails → throw (3 >= 3)
+            // Total: 3 calls
             expect(global.fetch).toHaveBeenCalledTimes(3);
+            
+            // Restore original config
+            BackendProxyService.configure({ retryAttempts: originalRetryAttempts });
         });
 
         it('should handle non-JSON responses', async () => {
@@ -217,15 +226,21 @@ describe('BackendProxyService', () => {
         });
 
         it('should throw on HTTP errors', async () => {
+            const mockHeaders = new Headers();
+            mockHeaders.set('content-type', 'text/plain');
             const mockResponse = {
                 ok: false,
                 status: 404,
                 statusText: 'Not Found',
-                headers: new Map(),
+                headers: mockHeaders,
+                json: async () => { throw new Error('Not Found'); },
+                text: async () => { throw new Error('Not Found'); },
             };
 
             (global.fetch as jest.Mock).mockResolvedValue(mockResponse);
 
+            // The error should include "HTTP 404" in the message
+            // Even if json() or text() throw, the original HTTP error should be preserved
             await expect(BackendProxyService.get('/users')).rejects.toThrow(/HTTP 404/);
         });
 

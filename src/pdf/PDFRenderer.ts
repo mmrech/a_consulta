@@ -254,6 +254,10 @@ export const PDFRenderer = {
             // Clear any previous search markers
             clearSearchMarkers(state.searchMarkers.map(m => m.element));
 
+            // Re-apply search highlighting if there are search results
+            // Note: Search highlighting is handled by SearchService.highlightResults()
+            // which is called from main.ts after search completes
+
             // Render bounding box overlays if enabled
             if (PDFRenderer.showBoundingBoxes) {
                 await PDFRenderer.renderBoundingBoxes(page, textItems, state.scale);

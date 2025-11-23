@@ -190,7 +190,6 @@ export const SearchService = {
                     markers.push({
                         element: marker,
                         page: pageNum,
-                        text: span.textContent || '',
                     });
                 }
             });

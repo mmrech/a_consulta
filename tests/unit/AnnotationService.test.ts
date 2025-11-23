@@ -28,6 +28,9 @@ describe('AnnotationService', () => {
         mockContainer = document.createElement('div');
         mockContainer.style.width = '800px';
         mockContainer.style.height = '1000px';
+        // Set clientWidth/clientHeight for canvas sizing
+        Object.defineProperty(mockContainer, 'clientWidth', { value: 800, writable: true });
+        Object.defineProperty(mockContainer, 'clientHeight', { value: 1000, writable: true });
         document.body.appendChild(mockContainer);
     });
 

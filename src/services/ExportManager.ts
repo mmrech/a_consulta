@@ -15,21 +15,60 @@ import StatusManager from '../utils/status';
  */
 const ExportManager = {
     /**
-     * Export extraction data as JSON
-     * Includes document metadata, form data, and all extractions
+     * Export extraction data as JSON with full provenance metadata
+     * Includes document metadata, form data, all extractions with coordinates,
+     * citation map, text chunks, and bounding box data
      */
     exportJSON: function() {
         const state = AppStateManager.getState();
         const formData = FormManager.collectFormData();
+        const extractions = ExtractionTracker.getExtractions();
+        
+        // Enhanced data structure with provenance
         const data = {
+            version: '2.0',
             document: state.documentName,
             exportDate: new Date().toISOString(),
+            totalPages: state.totalPages,
             formData,
-            extractions: ExtractionTracker.getExtractions()
+            extractions: extractions.map(ext => ({
+                ...ext,
+                // Ensure coordinates are included
+                coordinates: {
+                    x: ext.coordinates?.x || ext.coordinates?.left || 0,
+                    y: ext.coordinates?.y || ext.coordinates?.top || 0,
+                    width: ext.coordinates?.width || 0,
+                    height: ext.coordinates?.height || 0
+                },
+                // Add provenance metadata
+                provenance: {
+                    method: ext.method,
+                    timestamp: ext.timestamp,
+                    page: ext.page,
+                    hasCoordinates: !!(ext.coordinates?.x || ext.coordinates?.left)
+                }
+            })),
+            // Include citation map if available
+            citationMap: state.citationMap || {},
+            // Include text chunks for citation lookup
+            textChunks: state.textChunks?.map(chunk => ({
+                index: chunk.index,
+                text: chunk.text.substring(0, 200), // Truncate for export
+                pageNum: chunk.pageNum,
+                bbox: chunk.bbox
+            })) || [],
+            // Include extracted figures and tables metadata
+            metadata: {
+                extractedFigures: state.extractedFigures?.length || 0,
+                extractedTables: state.extractedTables?.length || 0,
+                extractionCount: extractions.length,
+                uniqueFields: new Set(extractions.map(e => e.fieldName)).size
+            }
         };
+        
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         this.downloadFile(blob, `extraction_${Date.now()}.json`);
-        StatusManager.show('JSON export successful (Preview)', 'success');
+        StatusManager.show('JSON export successful with provenance metadata', 'success');
     },
 
     /**
@@ -168,6 +207,73 @@ const ExportManager = {
     },
 
     /**
+     * Export provenance data with complete coordinate metadata
+     * Includes all extraction coordinates, bounding boxes, and citation information
+     */
+    exportProvenance: function() {
+        const state = AppStateManager.getState();
+        const formData = FormManager.collectFormData();
+        const extractions = ExtractionTracker.getExtractions();
+
+        const provenanceData = {
+            document: {
+                name: state.documentName,
+                totalPages: state.totalPages,
+                loadDate: state.documentName ? new Date().toISOString() : null,
+            },
+            exportDate: new Date().toISOString(),
+            formData,
+            extractions: extractions.map(ext => ({
+                id: ext.id,
+                fieldName: ext.fieldName,
+                text: ext.text,
+                page: ext.page,
+                method: ext.method,
+                timestamp: ext.timestamp,
+                coordinates: {
+                    x: ext.coordinates.x || ext.coordinates.left || 0,
+                    y: ext.coordinates.y || ext.coordinates.top || 0,
+                    width: ext.coordinates.width,
+                    height: ext.coordinates.height,
+                },
+                boundingBox: {
+                    x: ext.coordinates.x || ext.coordinates.left || 0,
+                    y: ext.coordinates.y || ext.coordinates.top || 0,
+                    width: ext.coordinates.width,
+                    height: ext.coordinates.height,
+                },
+            })),
+            citations: state.citationMap ? Object.entries(state.citationMap).map(([index, chunk]: [string, any]) => ({
+                index: parseInt(index),
+                text: chunk.text,
+                pageNum: chunk.pageNum,
+                bbox: chunk.bbox,
+                section: chunk.section,
+            })) : [],
+            textChunks: state.textChunks ? state.textChunks.map((chunk: any) => ({
+                index: chunk.index,
+                text: chunk.text,
+                pageNum: chunk.pageNum,
+                bbox: chunk.bbox,
+                section: chunk.section,
+                isHeading: chunk.isHeading,
+            })) : [],
+            metadata: {
+                totalExtractions: extractions.length,
+                extractionMethods: extractions.reduce((acc: Record<string, number>, ext) => {
+                    acc[ext.method] = (acc[ext.method] || 0) + 1;
+                    return acc;
+                }, {}),
+                pagesWithExtractions: [...new Set(extractions.map(e => e.page))],
+            },
+        };
+
+        const blob = new Blob([JSON.stringify(provenanceData, null, 2)], { type: 'application/json' });
+        this.downloadFile(blob, `provenance_${state.documentName || 'extraction'}_${Date.now()}.json`);
+        StatusManager.show('Provenance export successful', 'success');
+    },
+
+    /**
      * Download file helper
      * Creates temporary download link and triggers download
      * @private
@@ -205,6 +311,10 @@ export function exportAudit() {
 
 export function exportAnnotatedPDF() {
     ExportManager.exportAnnotatedPDF();
+}
+
+export function exportProvenance() {
+    ExportManager.exportProvenance();
 }
 
 export default ExportManager;
