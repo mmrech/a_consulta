@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-import { GoogleGenAI, Type } from "@google/genai";
+import BackendAIClient from "./src/services/BackendAIClient";
 
 // Fix: Add declarations for global variables and functions attached to the window object.
 declare global {
@@ -47,21 +47,6 @@ declare global {
 
 
 // --- CONFIGURATION ---
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-    // A visible error for the user in the UI, as this is critical.
-    const body = document.querySelector('body');
-    if (body) {
-        body.innerHTML = `<div style="font-family: sans-serif; padding: 2em; text-align: center; color: #b71c1c; background: #ffebee;">
-            <h1>Configuration Error</h1>
-            <p>The Gemini API Key is missing. Please ensure the API_KEY environment variable is set.</p>
-        </div>`;
-    }
-    throw new Error("API_KEY environment variable not set.");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 const CONFIG = {
     // For Google Sheets (requires OAuth 2.0 Client ID)
@@ -178,6 +163,21 @@ const StatusManager = {
         this.spinnerDiv?.classList.toggle('active', show);
     }
 };
+
+async function initializeBackendConnection() {
+    try {
+        StatusManager.show('Connecting to AI backend...', 'info', 6000);
+        const healthy = await BackendAIClient.healthCheck();
+        if (healthy) {
+            StatusManager.show('Connected to AI backend. Load a PDF to begin.', 'success', 5000);
+        } else {
+            StatusManager.show('AI backend is unavailable. Please start the server and try again.', 'error', 10000);
+        }
+    } catch (error) {
+        console.error('AI backend health check failed:', error);
+        StatusManager.show('Could not reach AI backend. Check your connection.', 'error', 10000);
+    }
+}
 
 // SecurityUtils
 const SecurityUtils = {
@@ -1017,34 +1017,7 @@ async function getAllPdfText() {
 }
 
 /**
- * Calls the Gemini API with Google Search grounding.
- * @param {string} systemInstruction - The system instruction.
- * @param {string} userPrompt - The user query.
- * @param {object} responseSchema - The JSON schema for the response.
- * @returns {Promise<string>} - The text content from the API response.
- */
-async function callGeminiWithSearch(systemInstruction, userPrompt, responseSchema) {
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: [{ parts: [{ text: userPrompt }] }],
-            config: {
-                systemInstruction,
-                tools: [{googleSearch: {}}],
-                responseMimeType: "application/json",
-                responseSchema
-            }
-        });
-        return response.text;
-    } catch (error) {
-        console.error("Gemini Search API call failed:", error);
-        throw error;
-    }
-}
-
-
-/**
- * ✨ Generates PICO-T summary using Gemini API.
+ * ✨ Generates PICO-T summary using backend AI endpoint.
  */
 async function generatePICO() {
     const state = AppStateManager.getState();
@@ -1059,7 +1032,7 @@ async function generatePICO() {
 
     AppStateManager.setState({ isProcessing: true });
     document.getElementById('pico-loading').style.display = 'block';
-    StatusManager.show('✨ Analyzing document for PICO-T summary...', 'info');
+    StatusManager.show('✨ Analyzing document for PICO-T summary via AI backend...', 'info');
 
     try {
         // Get full text of the document to provide as context
@@ -1068,60 +1041,32 @@ async function generatePICO() {
             throw new Error("Could not read text from the PDF.");
         }
 
-        const systemPrompt = "You are an expert clinical research assistant. Your task is to extract PICO-T information from the provided clinical study text and return it as a JSON object. Be concise and accurate. If information is not found, return an empty string for that field.";
-        const userPrompt = `Here is the clinical study text:\n\n${documentText}`;
-         
-        // Fix: Use Type enum for schema definition
-        const picoSchema = {
-            type: Type.OBJECT,
-            properties: {
-                "population": { "type": Type.STRING, "description": "The study population (e.g., '57 patients with malignant cerebellar infarction')" },
-                "intervention": { "type": Type.STRING, "description": "The intervention performed (e.g., 'suboccipital decompressive craniectomy (SDC)')" },
-                "comparator": { "type": Type.STRING, "description": "The comparison group (e.g., 'best medical treatment alone' or 'no comparator')" },
-                "outcomes": { "type": Type.STRING, "description": "The primary outcomes measured (e.g., 'mRS at 12-month follow-up')" },
-                "timing": { "type": Type.STRING, "description": "The follow-up timing (e.g., '12-month follow-up')" },
-                "studyType": { "type": Type.STRING, "description": "The type of study (e.g., 'retrospective-matched case-control study')" }
-            }
-        };
-
-        // Call Gemini directly
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: [{ parts: [{ text: userPrompt }] }],
-            config: {
-                systemInstruction: systemPrompt,
-                responseMimeType: "application/json",
-                responseSchema: picoSchema
-            }
-        });
-         
-        const jsonText = response.text;
-        const data = JSON.parse(jsonText);
+        const data = await BackendAIClient.generatePICO(documentText);
 
         // Populate fields
         // Fix: Property 'value' does not exist on type 'HTMLElement'.
+        const studyType = data.studyType || data.study_type || '';
         (document.getElementById('eligibility-population') as HTMLInputElement).value = data.population || '';
         (document.getElementById('eligibility-intervention') as HTMLInputElement).value = data.intervention || '';
         (document.getElementById('eligibility-comparator') as HTMLInputElement).value = data.comparator || '';
         (document.getElementById('eligibility-outcomes') as HTMLInputElement).value = data.outcomes || '';
         (document.getElementById('eligibility-timing') as HTMLInputElement).value = data.timing || '';
-        (document.getElementById('eligibility-type') as HTMLInputElement).value = data.studyType || '';
-         
+        (document.getElementById('eligibility-type') as HTMLInputElement).value = studyType;
+
         // Add to trace log
         const state2 = AppStateManager.getState();
         const coords = { x: 0, y: 0, width: 0, height: 0 }; // AI extractions have no coords
-        ExtractionTracker.addExtraction({ fieldName: 'population (AI)', text: data.population, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
-        ExtractionTracker.addExtraction({ fieldName: 'intervention (AI)', text: data.intervention, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
-        ExtractionTracker.addExtraction({ fieldName: 'comparator (AI)', text: data.comparator, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
-        ExtractionTracker.addExtraction({ fieldName: 'outcomes (AI)', text: data.outcomes, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
-        ExtractionTracker.addExtraction({ fieldName: 'timing (AI)', text: data.timing, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
-        ExtractionTracker.addExtraction({ fieldName: 'studyType (AI)', text: data.studyType, page: 0, coordinates: coords, method: 'gemini-pico', documentName: state2.documentName });
+        ExtractionTracker.addExtraction({ fieldName: 'population (AI)', text: data.population, page: 0, coordinates: coords, method: 'backend-pico', documentName: state2.documentName });
+        ExtractionTracker.addExtraction({ fieldName: 'intervention (AI)', text: data.intervention, page: 0, coordinates: coords, method: 'backend-pico', documentName: state2.documentName });
+        ExtractionTracker.addExtraction({ fieldName: 'comparator (AI)', text: data.comparator, page: 0, coordinates: coords, method: 'backend-pico', documentName: state2.documentName });
+        ExtractionTracker.addExtraction({ fieldName: 'outcomes (AI)', text: data.outcomes, page: 0, coordinates: coords, method: 'backend-pico', documentName: state2.documentName });
+        ExtractionTracker.addExtraction({ fieldName: 'timing (AI)', text: data.timing, page: 0, coordinates: coords, method: 'backend-pico', documentName: state2.documentName });
+        ExtractionTracker.addExtraction({ fieldName: 'studyType (AI)', text: studyType, page: 0, coordinates: coords, method: 'backend-pico', documentName: state2.documentName });
 
-
-        StatusManager.show('✨ PICO-T fields auto-populated by Gemini!', 'success');
+        StatusManager.show('✨ PICO-T fields auto-populated by AI backend!', 'success');
 
     } catch (error) {
-        console.error("Gemini PICO-T Error:", error);
+        console.error("AI backend PICO-T Error:", error);
         StatusManager.show(`AI extraction failed: ${error.message}`, 'error');
     } finally {
         AppStateManager.setState({ isProcessing: false });
@@ -1130,7 +1075,7 @@ async function generatePICO() {
 }
          
 /**
- * ✨ Generates a summary of key findings using Gemini API.
+ * ✨ Generates a summary of key findings using backend AI endpoint.
  */
 async function generateSummary() {
     const state = AppStateManager.getState();
@@ -1145,38 +1090,27 @@ async function generateSummary() {
 
     AppStateManager.setState({ isProcessing: true });
     document.getElementById('summary-loading').style.display = 'block';
-    StatusManager.show('✨ Asking Gemini for summary...', 'info');
+    StatusManager.show('✨ Asking AI backend for summary...', 'info');
 
      try {
         const documentText = await getAllPdfText();
         if (!documentText) {
             throw new Error("Could not read text from the PDF.");
         }
-        
-        const systemPrompt = "You are an expert clinical research assistant. Your task is to read the provided clinical study text and write a concise summary (2-3 paragraphs) focusing on the key findings, outcomes, and any identified predictors of those outcomes.";
-        const userPrompt = `Please summarize the following clinical study text:\n\n${documentText}`;
-        
-        const response = await ai.models.generateContent({
-            model: 'gemini-flash-latest',
-            contents: [{ parts: [{ text: userPrompt }] }],
-            config: {
-                systemInstruction: systemPrompt,
-            }
-        });
-         
-        const summaryText = response.text;
-         
+
+        const { summary: summaryText } = await BackendAIClient.generateSummary(documentText);
+
         // Fix: Property 'value' does not exist on type 'HTMLElement'.
         (document.getElementById('predictorsPoorOutcomeSurgical') as HTMLTextAreaElement).value = summaryText;
-         
+
         // Add to trace log
         const state2 = AppStateManager.getState();
-        ExtractionTracker.addExtraction({ fieldName: 'summary (AI)', text: summaryText, page: 0, coordinates: {x:0,y:0,width:0,height:0}, method: 'gemini-summary', documentName: state2.documentName });
-         
-        StatusManager.show('✨ Key findings summary generated by Gemini!', 'success');
+        ExtractionTracker.addExtraction({ fieldName: 'summary (AI)', text: summaryText, page: 0, coordinates: {x:0,y:0,width:0,height:0}, method: 'backend-summary', documentName: state2.documentName });
+
+        StatusManager.show('✨ Key findings summary generated by AI backend!', 'success');
 
      } catch (error) {
-        console.error("Gemini Summary Error:", error);
+        console.error("AI backend Summary Error:", error);
         StatusManager.show(`AI summary failed: ${error.message}`, 'error');
     } finally {
         AppStateManager.setState({ isProcessing: false });
@@ -1185,7 +1119,7 @@ async function generateSummary() {
 }
 
 /**
- * ✨ Validates a field's content against the PDF text using Gemini.
+ * ✨ Validates a field's content against the PDF text using the AI backend.
  */
 async function validateFieldWithAI(fieldId) {
     const state = AppStateManager.getState();
@@ -1213,7 +1147,7 @@ async function validateFieldWithAI(fieldId) {
      
     AppStateManager.setState({ isProcessing: true });
     StatusManager.showLoading(true);
-    StatusManager.show(`✨ Validating claim with Gemini: "${claim.substring(0, 30)}..."`, 'info');
+    StatusManager.show(`✨ Validating claim with AI backend: "${claim.substring(0, 30)}..."`, 'info');
 
     try {
         const documentText = await getAllPdfText();
@@ -1221,40 +1155,7 @@ async function validateFieldWithAI(fieldId) {
             throw new Error("Could not read text from PDF for validation.");
         }
         
-        const systemPrompt = `You are a fact-checking expert specializing in clinical research papers. Your task is to determine if a given "claim" is directly supported by the provided "document text". You must respond with a JSON object.`;
-        const userPrompt = `DOCUMENT TEXT:\n"""${documentText}"""\n\nCLAIM:\n"""${claim}"""\n\nBased on the document text, is the claim supported? Provide a direct quote if it is.`;
-
-        const validationSchema = {
-            type: Type.OBJECT,
-            properties: {
-                "is_supported": { 
-                    type: Type.BOOLEAN, 
-                    description: "True if the claim is directly supported by the text, otherwise false." 
-                },
-                "supporting_quote": { 
-                    type: Type.STRING, 
-                    description: "A direct quote from the document that supports the claim. If not supported, this should be an empty string or a brief explanation." 
-                },
-                "confidence_score": { 
-                    type: Type.NUMBER, 
-                    description: "Your confidence in the validation from 0.0 to 1.0." 
-                }
-            },
-            required: ["is_supported", "supporting_quote", "confidence_score"]
-        };
-        
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
-            contents: [{ parts: [{ text: userPrompt }] }],
-            config: {
-                systemInstruction: systemPrompt,
-                responseMimeType: "application/json",
-                responseSchema: validationSchema
-            }
-        });
-
-        const jsonText = response.text;
-        const validation = JSON.parse(jsonText);
+        const validation = await BackendAIClient.validateField(fieldId, claim, documentText);
 
         if (validation.is_supported) {
             StatusManager.show(`✓ VALIDATED (Confidence: ${Math.round(validation.confidence_score * 100)}%): "${validation.supporting_quote}"`, 'success', 10000);
@@ -1265,7 +1166,7 @@ async function validateFieldWithAI(fieldId) {
         }
 
     } catch (error) {
-        console.error("Gemini Validation Error:", error);
+        console.error("AI backend Validation Error:", error);
         StatusManager.show(`AI validation failed: ${error.message}`, 'error');
     } finally {
         AppStateManager.setState({ isProcessing: false });
@@ -1274,7 +1175,7 @@ async function validateFieldWithAI(fieldId) {
 }
          
 /**
- * ✨ Finds study metadata using Gemini with Google Search.
+ * ✨ Finds study metadata using the AI backend.
  */
 async function findMetadata() {
     const state = AppStateManager.getState();
@@ -1291,35 +1192,21 @@ async function findMetadata() {
      
     AppStateManager.setState({ isProcessing: true });
     document.getElementById('metadata-loading').style.display = 'block';
-    StatusManager.show('✨ Searching Google for metadata...', 'info');
+    StatusManager.show('✨ Contacting AI backend for metadata...', 'info');
 
     try {
-        const systemPrompt = "You are a research assistant. Find the metadata for the given study. Use Google Search to find the information. If a value isn't found, return an empty string for it. Provide only the JSON response.";
-        const userPrompt = `Find the DOI, PMID, journal name, and publication year for the following study: "${citationText}"`;
-         
-        const metadataSchema = {
-            type: Type.OBJECT,
-            properties: {
-                "doi": { "type": Type.STRING, "description": "The DOI of the paper" },
-                "pmid": { "type": Type.STRING, "description": "The PubMed ID (PMID) of the paper" },
-                "journal": { "type": Type.STRING, "description": "The name of the journal" },
-                "year": { "type": Type.STRING, "description": "The 4-digit publication year" }
-            }
-        };
+        const data = await BackendAIClient.findMetadata(citationText);
 
-        const responseJson = await callGeminiWithSearch(systemPrompt, userPrompt, metadataSchema);
-        const data = JSON.parse(responseJson);
-         
         // Fix: Property 'value' does not exist on type 'HTMLElement'.
         if (data.doi) (document.getElementById('doi') as HTMLInputElement).value = data.doi;
         if (data.pmid) (document.getElementById('pmid') as HTMLInputElement).value = data.pmid;
         if (data.journal) (document.getElementById('journal') as HTMLInputElement).value = data.journal;
         if (data.year) (document.getElementById('year') as HTMLInputElement).value = data.year;
 
-        StatusManager.show('✨ Metadata auto-populated!', 'success');
+        StatusManager.show('✨ Metadata auto-populated from AI backend!', 'success');
 
     } catch (error) {
-        console.error("Gemini Metadata Error:", error);
+        console.error("AI backend Metadata Error:", error);
         StatusManager.show(`AI metadata search failed: ${error.message}`, 'error');
     } finally {
         AppStateManager.setState({ isProcessing: false });
@@ -1328,7 +1215,7 @@ async function findMetadata() {
 }
 
 /**
- * ✨ Extracts tables from the document using Gemini Pro.
+ * ✨ Extracts tables from the document using the AI backend.
  */
 async function handleExtractTables() {
     const state = AppStateManager.getState();
@@ -1345,55 +1232,18 @@ async function handleExtractTables() {
         const documentText = await getAllPdfText();
         if (!documentText) return;
 
-        const systemPrompt = `You are a data extraction specialist. Analyze the provided text from a clinical research paper. Identify all tables and extract their content. Structure the output as a JSON object. The object should have a single key 'tables' which is an array. Each object in the array should represent one table and have 'title' (the table's caption or title), 'description' (a brief summary of the table's content), and 'data' (a 2D array of strings representing rows and columns, including headers). If no tables are found, return an empty array for the 'tables' key.`;
-
-        const tableSchema = {
-            type: Type.OBJECT,
-            properties: {
-                tables: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            title: { type: Type.STRING },
-                            description: { type: Type.STRING },
-                            data: {
-                                type: Type.ARRAY,
-                                items: {
-                                    type: Type.ARRAY,
-                                    items: { type: Type.STRING }
-                                }
-                            }
-                        },
-                        required: ["title", "data"]
-                    }
-                }
-            }
-        };
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
-            contents: documentText,
-            config: {
-                systemInstruction: systemPrompt,
-                responseMimeType: "application/json",
-                responseSchema: tableSchema
-            }
-        });
-
-        const jsonText = response.text;
-        const result = JSON.parse(jsonText);
+        const result = await BackendAIClient.extractTables(documentText);
 
         if (result.tables && result.tables.length > 0) {
             renderTables(result.tables, resultsContainer);
             StatusManager.show(`Successfully extracted ${result.tables.length} tables.`, 'success');
         } else {
             resultsContainer.innerText = "No tables found in the document.";
-            StatusManager.show("No tables were identified by the AI.", "info");
+            StatusManager.show("No tables were identified by the AI backend.", "info");
         }
 
     } catch (error) {
-        console.error("Table Extraction Error:", error);
+        console.error("AI backend Table Extraction Error:", error);
         resultsContainer.innerText = `Error: ${error.message}`;
         StatusManager.show("Table extraction failed.", "error");
     } finally {
@@ -1453,7 +1303,7 @@ function renderTables(tables, container) {
 }
 
 /**
- * ✨ Analyzes an uploaded image with a text prompt using Gemini Flash.
+ * ✨ Analyzes an uploaded image with a text prompt using the AI backend.
  */
 async function handleImageAnalysis() {
     // Fix: Property 'files' does not exist on type 'HTMLElement'.
@@ -1479,26 +1329,12 @@ async function handleImageAnalysis() {
 
     try {
         const base64Data = await blobToBase64(file);
-        const imagePart = {
-            inlineData: {
-                mimeType: file.type,
-                data: base64Data,
-            },
-        };
-        const textPart = {
-            text: prompt
-        };
-        
-        // Fix: Type error in generateContent call
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: { parts: [imagePart, textPart] },
-        });
+        const { analysis } = await BackendAIClient.analyzeImage(base64Data, file.type, prompt);
 
-        resultsContainer.innerText = response.text;
+        resultsContainer.innerText = analysis;
 
     } catch (error) {
-        console.error("Image Analysis Error:", error);
+        console.error("AI backend Image Analysis Error:", error);
         resultsContainer.innerText = `Error: ${error.message}`;
         StatusManager.show("Image analysis failed.", "error");
     } finally {
@@ -1507,7 +1343,7 @@ async function handleImageAnalysis() {
 }
 
 /**
- * ✨ Performs deep analysis on the document text using Gemini Pro with thinking budget.
+ * ✨ Performs deep analysis on the document text using the AI backend.
  */
 async function handleDeepAnalysis() {
     const state = AppStateManager.getState();
@@ -1523,27 +1359,19 @@ async function handleDeepAnalysis() {
         return;
     }
 
-    resultsContainer.innerHTML = 'Thinking deeply... ✨';
+    resultsContainer.innerHTML = 'Thinking deeply with AI backend... ✨';
     StatusManager.showLoading(true);
 
     try {
         const documentText = await getAllPdfText();
         if (!documentText) return;
         
-        const fullPrompt = `Based on the following document text, please answer this question: ${prompt}\n\nDOCUMENT TEXT:\n${documentText}`;
-        
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
-            contents: fullPrompt,
-            config: {
-                thinkingConfig: { thinkingBudget: 32768 }
-            }
-        });
-        
-        resultsContainer.innerText = response.text;
+        const { analysis } = await BackendAIClient.deepAnalysis(documentText, prompt);
+
+        resultsContainer.innerText = analysis;
 
     } catch (error) {
-        console.error("Deep Analysis Error:", error);
+        console.error("AI backend Deep Analysis Error:", error);
         resultsContainer.innerText = `Error: ${error.message}`;
         StatusManager.show("Deep analysis failed.", "error");
     } finally {
@@ -1745,7 +1573,7 @@ document.getElementById('fit-width').onclick = async () => {
 
 };
 
-// Expose Gemini functions globally
+// Expose AI backend functions globally
 // Fix: Bunch of properties missing on window. (Solved by declare global)
 window.generatePICO = generatePICO;
 window.generateSummary = generateSummary;
@@ -1885,5 +1713,5 @@ window.handleSubmitToGoogleSheets = async (e) => {
 };
 
 
- // Initial status message
- StatusManager.show('Preview Ready. Load a PDF to begin.', 'info');
+// Initial status message driven by backend health
+initializeBackendConnection();
